@@ -77,3 +77,4 @@ npm run build
 - [产品需求文档 PRD](docs/PRD.md)
 - [项目路线图](docs/ROADMAP.md)
 - [第一版实现说明](docs/V1_IMPLEMENTATION.md)
+- [部署与可达性说明](docs/DEPLOYMENT.md)
