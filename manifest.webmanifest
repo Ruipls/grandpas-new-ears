@@ -1,0 +1,17 @@
+{
+  "name": "爷爷的新耳朵",
+  "short_name": "新耳朵",
+  "description": "面向听障人士的实时字幕应用",
+  "start_url": ".",
+  "display": "standalone",
+  "background_color": "#eef4f2",
+  "theme_color": "#eef4f2",
+  "icons": [
+    {
+      "src": "assets/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
