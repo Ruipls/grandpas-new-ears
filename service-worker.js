@@ -1,11 +1,14 @@
-const CACHE_NAME = "grandpas-new-ears-v2";
+const CACHE_NAME = "grandpas-new-ears-v3";
 const ASSETS = [
   "./",
   "./index.html",
+  "./health.html",
   "./manifest.webmanifest",
   "./src/styles.css",
   "./src/app.js",
-  "./assets/icon.svg"
+  "./assets/icon.svg",
+  "./assets/icon-192.png",
+  "./assets/icon-512.png"
 ];
 
 self.addEventListener("install", (event) => {
@@ -23,9 +26,41 @@ self.addEventListener("activate", (event) => {
 
 self.addEventListener("fetch", (event) => {
   if (event.request.method !== "GET") return;
-  event.respondWith(
-    caches.match(event.request).then((cached) =>
-      cached || fetch(event.request).catch(() => caches.match("./index.html"))
-    )
-  );
+
+  if (event.request.mode === "navigate") {
+    event.respondWith(networkFirstPage(event.request));
+    return;
+  }
+
+  event.respondWith(cacheFirstAsset(event.request));
 });
+
+async function networkFirstPage(request) {
+  const cache = await caches.open(CACHE_NAME);
+
+  try {
+    const response = await fetch(request);
+    if (response.ok) {
+      await cache.put("./index.html", response.clone());
+    }
+    return response;
+  } catch {
+    return cache.match("./index.html");
+  }
+}
+
+async function cacheFirstAsset(request) {
+  const cached = await caches.match(request);
+  if (cached) return cached;
+
+  try {
+    const response = await fetch(request);
+    if (response.ok) {
+      const cache = await caches.open(CACHE_NAME);
+      await cache.put(request, response.clone());
+    }
+    return response;
+  } catch {
+    return caches.match("./index.html");
+  }
+}

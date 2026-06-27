@@ -1,0 +1,13 @@
+{
+  "name": "grandpas-new-ears",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node scripts/build-site.mjs",
+    "check": "node --check src/app.js && node --check service-worker.js && node --check scripts/build-site.mjs && node --check scripts/generate-icons.mjs",
+    "icons": "node scripts/generate-icons.mjs",
+    "deploy:cloudflare": "npm run build && npx wrangler pages deploy dist --project-name grandpas-new-ears --branch main"
+  }
+}
+
