@@ -11,11 +11,11 @@
     <title>爷爷的新耳朵</title>
     <link rel="icon" href="assets/icon.svg" type="image/svg+xml">
     <link rel="apple-touch-icon" href="assets/icon-192.png">
-    <link rel="manifest" href="manifest.webmanifest?v=20260629-layout2">
-    <link rel="stylesheet" href="src/styles.css?v=20260629-layout2">
+    <link rel="manifest" href="manifest.webmanifest?v=20260629-ui1">
+    <link rel="stylesheet" href="src/styles.css?v=20260629-ui1">
   </head>
   <body>
-    <div class="app-shell" data-app-version="20260629-layout2" data-contrast="soft" data-font-scale="large">
+    <div class="app-shell" data-app-version="20260629-ui1" data-contrast="soft" data-font-scale="large">
       <header class="top-bar">
         <div class="brand">
           <span class="brand-mark" aria-hidden="true">耳</span>
@@ -57,7 +57,10 @@
         </div>
 
         <details class="settings-panel" id="settingsPanel" open>
-          <summary>设置</summary>
+          <summary>
+            <span>设置</span>
+            <span class="summary-chevron" aria-hidden="true"></span>
+          </summary>
           <div class="settings-grid">
             <label class="field">
               <span>讲话语言</span>
@@ -106,7 +109,10 @@
         <details class="history-panel" id="historyPanel">
           <summary>
             <span>已保存对话</span>
-            <strong id="historyCount">0</strong>
+            <span class="summary-meta">
+              <strong id="historyCount">0</strong>
+              <span class="summary-chevron" aria-hidden="true"></span>
+            </span>
           </summary>
           <div class="history-list" id="historyList"></div>
           <button class="text-action" id="clearHistoryButton" type="button">清空记录</button>
@@ -125,6 +131,6 @@
       </dialog>
     </div>
 
-    <script src="src/app.js?v=20260629-layout2" defer></script>
+    <script src="src/app.js?v=20260629-ui1" defer></script>
   </body>
 </html>

@@ -1,11 +1,11 @@
-const CACHE_NAME = "grandpas-new-ears-v5";
+const CACHE_NAME = "grandpas-new-ears-v6";
 const ASSETS = [
   "./",
   "./index.html",
   "./health.html",
-  "./manifest.webmanifest?v=20260629-layout2",
-  "./src/styles.css?v=20260629-layout2",
-  "./src/app.js?v=20260629-layout2",
+  "./manifest.webmanifest?v=20260629-ui1",
+  "./src/styles.css?v=20260629-ui1",
+  "./src/app.js?v=20260629-ui1",
   "./assets/icon.svg",
   "./assets/icon-192.png",
   "./assets/icon-512.png"

@@ -346,13 +346,47 @@ button {
   min-height: 2.75rem;
   display: flex;
   align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
   color: var(--text);
   cursor: pointer;
   font-weight: 850;
+  list-style: none;
 }
 
-.settings-panel summary::marker {
+.settings-panel summary::marker,
+.history-panel summary::marker {
+  content: "";
+}
+
+.settings-panel summary::-webkit-details-marker,
+.history-panel summary::-webkit-details-marker {
+  display: none;
+}
+
+.summary-meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.summary-chevron {
+  width: 0.72rem;
+  height: 0.72rem;
+  flex: 0 0 auto;
+  border-right: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
   color: var(--muted);
+  transform: rotate(45deg);
+  transition:
+    color 140ms ease,
+    transform 160ms ease;
+}
+
+.settings-panel[open] .summary-chevron,
+.history-panel[open] .summary-chevron {
+  color: var(--accent-strong);
+  transform: rotate(225deg);
 }
 
 .settings-grid {
@@ -483,10 +517,7 @@ button {
   color: var(--text);
   cursor: pointer;
   font-weight: 850;
-}
-
-.history-panel summary::marker {
-  color: var(--muted);
+  list-style: none;
 }
 
 .history-panel summary strong {
