@@ -8,8 +8,10 @@
 GitHub Pages：
 
 ```text
-https://ruipls.github.io/grandpas-new-ears/
+https://ruipls.github.io/grandpas-new-ears/?v=20260629-live1
 ```
+
+当前 GitHub Pages 发布源为 `UIimprove` 分支，根目录 `/`。
 
 健康检查页：
 
@@ -56,4 +58,3 @@ Your user email must been verified [code: 8000077]
 npm run build
 npx wrangler pages deploy dist --project-name grandpas-new-ears --branch main
 ```
-
