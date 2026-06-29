@@ -23,7 +23,6 @@ const LANGUAGE_NAMES = {
 
 const app = document.querySelector(".app-shell");
 const transcriptList = document.querySelector("#transcriptList");
-const partialCaption = document.querySelector("#partialCaption");
 const emptyState = document.querySelector("#emptyState");
 const statusText = document.querySelector("#statusText");
 const statusPill = document.querySelector("#statusPill");
@@ -169,7 +168,7 @@ function startRecognition() {
     }
 
     state.partialText = interim.trim();
-    renderPartial();
+    renderTranscript();
   };
 
   recognition.onerror = (event) => {
@@ -255,8 +254,6 @@ function stopSession() {
 
   if (state.partialText) {
     appendSegment(state.partialText);
-    state.partialText = "";
-    renderPartial();
   }
 
   state.listening = false;
@@ -305,7 +302,6 @@ function appendSegment(text, confidence = null) {
 
   state.partialText = "";
   renderTranscript();
-  renderPartial();
 }
 
 function saveCurrentSession() {
@@ -332,7 +328,6 @@ function resetSession() {
   state.segments = [];
   state.partialText = "";
   renderTranscript();
-  renderPartial();
   updateControls();
   setStatus("idle", "待机", "准备开始");
 }
@@ -343,38 +338,54 @@ function renderTranscript() {
   const fragment = document.createDocumentFragment();
 
   state.segments.forEach((segment, index) => {
-    const item = document.createElement("article");
-    item.className = "segment";
-
-    const meta = document.createElement("div");
-    meta.className = "segment-meta";
-    meta.textContent = `${index + 1} · ${formatTime(segment.createdAt)}`;
-
-    const text = document.createElement("div");
-    text.className = "segment-text";
-    text.textContent = segment.text;
-
-    item.append(meta, text);
-
-    if (state.settings.targetLanguage && state.settings.targetLanguage !== segment.sourceLanguage) {
-      const translation = document.createElement("div");
-      translation.className = "segment-translation";
-      translation.textContent = "译文服务待接入";
-      item.append(translation);
-    }
-
-    fragment.append(item);
+    fragment.append(createSegmentElement(segment, index));
   });
+
+  if (state.partialText) {
+    fragment.append(
+      createSegmentElement(
+        {
+          text: state.partialText,
+          sourceLanguage: state.settings.sourceLanguage,
+          targetLanguage: state.settings.targetLanguage
+        },
+        state.segments.length,
+        { live: true }
+      )
+    );
+  }
 
   transcriptList.append(fragment);
   transcriptList.scrollTop = transcriptList.scrollHeight;
   syncCaptionState();
 }
 
-function renderPartial() {
-  partialCaption.hidden = !state.partialText;
-  partialCaption.textContent = state.partialText;
-  syncCaptionState();
+function createSegmentElement(segment, index, options = {}) {
+  const item = document.createElement("article");
+  item.className = options.live ? "segment segment-live" : "segment";
+
+  const meta = document.createElement("div");
+  meta.className = "segment-meta";
+  meta.textContent = options.live ? "正在说话" : `${index + 1} · ${formatTime(segment.createdAt)}`;
+
+  const text = document.createElement("div");
+  text.className = "segment-text";
+  text.textContent = segment.text;
+
+  item.append(meta, text);
+
+  if (
+    !options.live &&
+    state.settings.targetLanguage &&
+    state.settings.targetLanguage !== segment.sourceLanguage
+  ) {
+    const translation = document.createElement("div");
+    translation.className = "segment-translation";
+    translation.textContent = "译文服务待接入";
+    item.append(translation);
+  }
+
+  return item;
 }
 
 function syncCaptionState() {

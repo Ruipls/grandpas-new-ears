@@ -181,8 +181,7 @@ button {
   background: color-mix(in srgb, var(--surface) 82%, transparent);
 }
 
-.empty-state[hidden],
-.partial-caption[hidden] {
+.empty-state[hidden] {
   display: none !important;
 }
 
@@ -232,6 +231,20 @@ button {
   font-weight: 700;
 }
 
+.segment-live .segment-meta {
+  color: var(--accent-strong);
+}
+
+.segment-live .segment-meta::before {
+  content: "";
+  width: 0.55rem;
+  height: 0.55rem;
+  flex: 0 0 auto;
+  border-radius: 999px;
+  background: currentColor;
+  animation: pulse 1.1s ease-in-out infinite;
+}
+
 .segment-text {
   overflow-wrap: anywhere;
   font-size: var(--caption-size);
@@ -244,18 +257,6 @@ button {
   color: var(--muted);
   font-size: clamp(1.25rem, 4vw, 2rem);
   line-height: 1.3;
-}
-
-.partial-caption {
-  flex: 0 0 auto;
-  margin: 0 clamp(1rem, 4vw, 2rem) clamp(1rem, 4vw, 2rem);
-  padding: 1rem 1.2rem;
-  border-left: 0.35rem solid var(--accent);
-  background: var(--accent-soft);
-  color: var(--accent-strong);
-  font-size: clamp(1.4rem, 5vw, 2.75rem);
-  line-height: 1.18;
-  overflow-wrap: anywhere;
 }
 
 .control-panel {
