@@ -58,6 +58,7 @@ applySettings();
 applyResponsiveDefaults();
 renderHistory();
 updateSupportState();
+syncCaptionState();
 bindEvents();
 registerServiceWorker();
 
@@ -338,7 +339,6 @@ function resetSession() {
 
 function renderTranscript() {
   transcriptList.replaceChildren();
-  emptyState.hidden = state.segments.length > 0 || Boolean(state.partialText);
 
   const fragment = document.createDocumentFragment();
 
@@ -368,12 +368,23 @@ function renderTranscript() {
 
   transcriptList.append(fragment);
   transcriptList.scrollTop = transcriptList.scrollHeight;
+  syncCaptionState();
 }
 
 function renderPartial() {
   partialCaption.hidden = !state.partialText;
   partialCaption.textContent = state.partialText;
-  emptyState.hidden = state.segments.length > 0 || Boolean(state.partialText);
+  syncCaptionState();
+}
+
+function syncCaptionState() {
+  const hasCaption = state.segments.length > 0 || Boolean(state.partialText);
+  const sessionActive = Boolean(state.sessionStartedAt) || state.listening || state.paused;
+  const showEmptyState = !hasCaption && !sessionActive;
+
+  emptyState.hidden = !showEmptyState;
+  emptyState.setAttribute("aria-hidden", String(!showEmptyState));
+  app.dataset.captionState = showEmptyState ? "empty" : "active";
 }
 
 function renderHistory() {
