@@ -35,7 +35,7 @@ Grandpa's New Ears 是一款面向听障人士、听力下降老人及其家人�
 GitHub Pages：
 
 ```text
-https://ruipls.github.io/grandpas-new-ears/?v=20260705-wechat1
+https://ruipls.github.io/grandpas-new-ears/?v=20260705-huawei1
 ```
 
 健康检查页：
@@ -44,7 +44,7 @@ https://ruipls.github.io/grandpas-new-ears/?v=20260705-wechat1
 https://ruipls.github.io/grandpas-new-ears/health.html
 ```
 
-如果某台 Android 设备打不开主页面，先打开健康检查页判断是网络入口问题，还是应用脚本/缓存问题。微信内打开但无法识别语音时，优先点右上角菜单并选择“在浏览器打开”。
+如果某台 Android 设备打不开主页面，先打开健康检查页判断是网络入口问题，还是应用脚本/缓存问题。微信或华为/鸿蒙浏览器内无法识别语音时，先使用“测试麦克风”和“复制诊断信息”定位问题。
 
 ## 本地运行
 
@@ -81,3 +81,4 @@ npm run build
 - [当前工作状态](docs/CURRENT_STATUS.md)
 - [识别质量与速度评价体系](docs/EVALUATION.md)
 - [微信内测试故障说明](docs/WECHAT_TESTING.md)
+- [华为 / 鸿蒙浏览器语音识别故障说明](docs/HUAWEI_HARMONYOS_TESTING.md)

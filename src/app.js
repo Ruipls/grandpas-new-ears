@@ -2,6 +2,7 @@ const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecogni
 const NO_RESULT_TIMEOUT_MS = 8000;
 const FAST_RESTART_LIMIT = 4;
 const FAST_RESTART_WINDOW_MS = 12000;
+const MICROPHONE_PROBE_MS = 1800;
 
 const STORAGE_KEYS = {
   settings: "gne:settings",
@@ -45,6 +46,7 @@ const historyList = document.querySelector("#historyList");
 const clearHistoryButton = document.querySelector("#clearHistoryButton");
 const exportMetricsButton = document.querySelector("#exportMetricsButton");
 const copyDiagnosticsButton = document.querySelector("#copyDiagnosticsButton");
+const testMicrophoneButton = document.querySelector("#testMicrophoneButton");
 const supportAlert = document.querySelector("#supportAlert");
 const fontButtons = Array.from(document.querySelectorAll("[data-font]"));
 
@@ -60,6 +62,7 @@ const state = {
     liveElement: null
   },
   support: getRuntimeSupport(),
+  lastMicrophoneProbe: null,
   recognitionWatchdog: null,
   diagnostics: createDiagnosticSession(null),
   history: loadJson(STORAGE_KEYS.history, []),
@@ -133,6 +136,7 @@ function bindEvents() {
 
   exportMetricsButton?.addEventListener("click", exportEvaluationReport);
   copyDiagnosticsButton?.addEventListener("click", copyDiagnosticsReport);
+  testMicrophoneButton?.addEventListener("click", testMicrophoneInput);
 }
 
 async function startSession() {
@@ -163,9 +167,7 @@ async function startSession() {
     renderSupportAlert(state.support, {
       kind: "microphone-error",
       title: "无法打开麦克风",
-      body: state.support.isWeChat
-        ? "微信内置浏览器可能没有给网页麦克风权限。请在系统浏览器打开，并允许麦克风。"
-        : "请允许麦克风权限；如果仍失败，请检查系统权限或换浏览器测试。"
+      body: getMicrophoneRecoveryMessage()
     });
     setStatus("error", "麦克风", getMicrophoneErrorMessage(error));
   }
@@ -566,18 +568,29 @@ function renderHistory() {
 
 function getRuntimeSupport() {
   const userAgent = navigator.userAgent || "";
+  const brands = navigator.userAgentData?.brands?.map((brand) => brand.brand).join(", ") || "";
+  const isHuaweiBrowser = /HuaweiBrowser|HUAWEIBrowser|Huawei/i.test(userAgent) || /Huawei/i.test(brands);
+  const isHarmonyOS = /HarmonyOS|OpenHarmony|ArkWeb|ArkWebView/i.test(userAgent);
+  const isHuaweiDevice = /HUAWEI|HONOR|Huawei|HarmonyOS|OpenHarmony|ArkWeb/i.test(userAgent);
+
   return {
     appVersion: app?.dataset?.appVersion || "",
     pageUrl: window.location.href,
     isSecureContext: window.isSecureContext,
     isWeChat: /MicroMessenger/i.test(userAgent),
+    isHuaweiBrowser,
+    isHarmonyOS,
+    isHuaweiDevice,
+    shouldPreferServerAsr: isHuaweiBrowser || isHarmonyOS,
     hasSpeechRecognition: Boolean(SpeechRecognition),
     hasNativeSpeechRecognition: "SpeechRecognition" in window,
     hasWebkitSpeechRecognition: "webkitSpeechRecognition" in window,
     hasMediaDevices: Boolean(navigator.mediaDevices?.getUserMedia),
+    hasAudioContext: Boolean(window.AudioContext || window.webkitAudioContext),
     hasClipboard: Boolean(navigator.clipboard?.writeText),
     platform: navigator.platform || "",
     language: navigator.language || "",
+    brands,
     userAgent
   };
 }
@@ -611,9 +624,15 @@ function getSupportMessage(support) {
     return {
       kind: "unsupported",
       title: "当前浏览器不支持语音识别",
-      body: support.isWeChat
-        ? "微信内置浏览器通常不能稳定使用网页语音识别。请点右上角菜单，选择在浏览器打开；安卓优先用 Chrome 或 Edge。"
-        : "请改用支持网页语音识别的浏览器测试；安卓优先 Chrome 或 Edge，iPhone 优先 Safari。"
+      body: getUnsupportedBrowserMessage(support)
+    };
+  }
+
+  if (support.isHuaweiBrowser || support.isHarmonyOS) {
+    return {
+      kind: "huawei",
+      title: "华为/鸿蒙浏览器可能无法识别",
+      body: "当前版本依赖浏览器内置语音识别。华为自带浏览器可能能打开麦克风，但不返回文字。请先点“测试麦克风”；若有声音但没有字幕，需要换浏览器或接入后端识别。"
     };
   }
 
@@ -686,14 +705,22 @@ function getNoResultRecoveryMessage() {
     return "如果你已经在说话但没有字幕，基本可以判定微信内置浏览器不支持当前网页识别。请点右上角菜单，选择在浏览器打开。";
   }
 
+  if (state.support.isHuaweiBrowser || state.support.isHarmonyOS) {
+    return "如果“测试麦克风”能检测到声音但没有字幕，说明华为/鸿蒙浏览器没有返回网页语音识别结果。当前静态网页无法强制修复，需要换浏览器或接入后端识别服务。";
+  }
+
   return "如果你已经在说话但没有字幕，请确认麦克风授权、调高音量，并优先用 Chrome、Edge 或 Safari 打开。";
 }
 
 function getRecognitionRecoveryMessage(error) {
   if (error === "not-allowed" || error === "service-not-allowed") {
-    return state.support.isWeChat
-      ? "微信内置浏览器可能禁止网页语音识别。请在系统浏览器打开，并允许麦克风。"
-      : "请在浏览器地址栏或系统设置里允许麦克风，然后重新开始。";
+    if (state.support.isWeChat) {
+      return "微信内置浏览器可能禁止网页语音识别。请在系统浏览器打开，并允许麦克风。";
+    }
+    if (state.support.isHuaweiBrowser || state.support.isHarmonyOS) {
+      return "华为/鸿蒙浏览器可能禁止网页语音识别。请先测试麦克风；若麦克风正常但无文字，需要换浏览器或后端识别。";
+    }
+    return "请在浏览器地址栏或系统设置里允许麦克风，然后重新开始。";
   }
 
   if (error === "network") {
@@ -705,6 +732,30 @@ function getRecognitionRecoveryMessage(error) {
   }
 
   return getNoResultRecoveryMessage();
+}
+
+function getUnsupportedBrowserMessage(support) {
+  if (support.isWeChat) {
+    return "微信内置浏览器通常不能稳定使用网页语音识别。请点右上角菜单，选择在浏览器打开；安卓优先用 Chrome 或 Edge。";
+  }
+
+  if (support.isHuaweiBrowser || support.isHarmonyOS || support.isHuaweiDevice) {
+    return "华为/鸿蒙环境可能没有网页语音识别能力。页面能打开不代表能转文字。请换 Chrome/Edge 测试；若仍不行，需要接入后端识别服务。";
+  }
+
+  return "请改用支持网页语音识别的浏览器测试；安卓优先 Chrome 或 Edge，iPhone 优先 Safari。";
+}
+
+function getMicrophoneRecoveryMessage() {
+  if (state.support.isWeChat) {
+    return "微信内置浏览器可能没有给网页麦克风权限。请在系统浏览器打开，并允许麦克风。";
+  }
+
+  if (state.support.isHuaweiBrowser || state.support.isHarmonyOS) {
+    return "请在华为浏览器和系统设置里允许麦克风。如果“测试麦克风”仍失败，说明网页没有拿到录音权限。";
+  }
+
+  return "请允许麦克风权限；如果仍失败，请检查系统权限或换浏览器测试。";
 }
 
 function createDiagnosticSession(startedAt) {
@@ -720,6 +771,7 @@ function createDiagnosticSession(startedAt) {
     recognitionStarts: [],
     recognitionEnds: [],
     audioEvents: [],
+    microphoneProbes: [],
     resultEvents: [],
     renderSamples: [],
     errors: []
@@ -762,6 +814,123 @@ function recordAudioEvent(type) {
     },
     500
   );
+}
+
+async function testMicrophoneInput() {
+  state.support = getRuntimeSupport();
+  setTemporaryButtonText(testMicrophoneButton, "请说话");
+
+  try {
+    const probe = await probeMicrophoneLevel(MICROPHONE_PROBE_MS);
+    state.lastMicrophoneProbe = probe;
+    state.diagnostics.microphoneProbes.push(probe);
+    showMicrophoneProbeResult(probe);
+  } catch (error) {
+    const probe = {
+      elapsedMs: getDiagnosticElapsedMs(),
+      ok: false,
+      error: error?.name || "microphone-probe-failed",
+      message: error?.message || ""
+    };
+    state.lastMicrophoneProbe = probe;
+    state.diagnostics.microphoneProbes.push(probe);
+    renderSupportAlert(state.support, {
+      kind: "microphone-error",
+      title: "麦克风测试失败",
+      body: getMicrophoneRecoveryMessage()
+    });
+    setStatus("error", "麦克风", getMicrophoneErrorMessage(error));
+  }
+}
+
+async function probeMicrophoneLevel(durationMs) {
+  if (!navigator.mediaDevices?.getUserMedia) {
+    throw new Error("getUserMedia unavailable");
+  }
+
+  const startedAt = performance.now();
+  const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+
+  if (!AudioContextClass) {
+    stream.getTracks().forEach((track) => track.stop());
+    throw new Error("AudioContext unavailable");
+  }
+
+  const audioContext = new AudioContextClass();
+  const source = audioContext.createMediaStreamSource(stream);
+  const analyser = audioContext.createAnalyser();
+  analyser.fftSize = 1024;
+  source.connect(analyser);
+
+  const buffer = new Uint8Array(analyser.fftSize);
+  let peak = 0;
+  let total = 0;
+  let sampleCount = 0;
+
+  await new Promise((resolve) => {
+    const sample = () => {
+      analyser.getByteTimeDomainData(buffer);
+      let framePeak = 0;
+      let frameTotal = 0;
+
+      for (const value of buffer) {
+        const level = Math.abs(value - 128) / 128;
+        framePeak = Math.max(framePeak, level);
+        frameTotal += level;
+      }
+
+      peak = Math.max(peak, framePeak);
+      total += frameTotal / buffer.length;
+      sampleCount += 1;
+
+      if (performance.now() - startedAt >= durationMs) {
+        resolve();
+        return;
+      }
+
+      window.requestAnimationFrame(sample);
+    };
+
+    sample();
+  });
+
+  source.disconnect();
+  await audioContext.close();
+  stream.getTracks().forEach((track) => track.stop());
+
+  return {
+    elapsedMs: getDiagnosticElapsedMs(),
+    ok: true,
+    durationMs: roundMetric(performance.now() - startedAt),
+    peak: roundMetric(peak),
+    average: roundMetric(sampleCount ? total / sampleCount : 0),
+    detectedSound: peak >= 0.04
+  };
+}
+
+function showMicrophoneProbeResult(probe) {
+  if (!probe.detectedSound) {
+    renderSupportAlert(state.support, {
+      kind: "microphone-low",
+      title: "没有检测到明显声音",
+      body: "麦克风权限可能已打开，但刚才没有检测到说话声。请靠近手机再试一次，或检查系统麦克风权限。"
+    });
+    setStatus("paused", "麦克风", "未检测到声音");
+    setTemporaryButtonText(testMicrophoneButton, "再测一次");
+    return;
+  }
+
+  renderSupportAlert(state.support, {
+    kind: "microphone-ok",
+    title: "麦克风可以收到声音",
+    body:
+      state.support.isHuaweiBrowser || state.support.isHarmonyOS
+        ? "这说明录音权限大概率正常；仍然没有字幕时，问题在浏览器语音识别能力，不在麦克风。下一步需要换浏览器或接入后端识别。"
+        : "麦克风有声音。如果点击开始仍没有字幕，请复制诊断信息回传。"
+  });
+  setStatus("idle", "麦克风正常", "请再点开始");
+  setTemporaryButtonText(testMicrophoneButton, "已检测到声音");
 }
 
 function recordResultEvent(event) {
@@ -833,6 +1002,8 @@ function buildSupportReport() {
     summary: summarizeDiagnostics(durationMs),
     errors: state.diagnostics.errors,
     audioEvents: state.diagnostics.audioEvents,
+    microphoneProbes: state.diagnostics.microphoneProbes,
+    lastMicrophoneProbe: state.lastMicrophoneProbe,
     recognitionStarts: state.diagnostics.recognitionStarts,
     recognitionEnds: state.diagnostics.recognitionEnds
   };
@@ -874,6 +1045,7 @@ function buildEvaluationReport() {
       recognitionStarts: state.diagnostics.recognitionStarts,
       recognitionEnds: state.diagnostics.recognitionEnds,
       audioEvents: state.diagnostics.audioEvents,
+      microphoneProbes: state.diagnostics.microphoneProbes,
       resultEvents: state.diagnostics.resultEvents,
       renderSamples: state.diagnostics.renderSamples,
       errors: state.diagnostics.errors
@@ -899,6 +1071,7 @@ function summarizeDiagnostics(durationMs) {
     recognitionRestartCount: Math.max(0, state.diagnostics.recognitionStarts.length - 1),
     recognitionEndCount: state.diagnostics.recognitionEnds.length,
     audioEventCount: state.diagnostics.audioEvents.length,
+    microphoneProbeCount: state.diagnostics.microphoneProbes.length,
     errorCount: state.diagnostics.errors.length,
     resultEventCount: resultEvents.length,
     interimEventCount,

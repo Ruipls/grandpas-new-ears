@@ -36,7 +36,7 @@
 ## 当前测试链接
 
 ```text
-https://ruipls.github.io/grandpas-new-ears/?v=20260705-wechat1
+https://ruipls.github.io/grandpas-new-ears/?v=20260705-huawei1
 ```
 
 ## 后续产品判断
