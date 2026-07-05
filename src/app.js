@@ -1,4 +1,7 @@
 const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+const NO_RESULT_TIMEOUT_MS = 8000;
+const FAST_RESTART_LIMIT = 4;
+const FAST_RESTART_WINDOW_MS = 12000;
 
 const STORAGE_KEYS = {
   settings: "gne:settings",
@@ -41,6 +44,8 @@ const historyCount = document.querySelector("#historyCount");
 const historyList = document.querySelector("#historyList");
 const clearHistoryButton = document.querySelector("#clearHistoryButton");
 const exportMetricsButton = document.querySelector("#exportMetricsButton");
+const copyDiagnosticsButton = document.querySelector("#copyDiagnosticsButton");
+const supportAlert = document.querySelector("#supportAlert");
 const fontButtons = Array.from(document.querySelectorAll("[data-font]"));
 
 const state = {
@@ -54,6 +59,8 @@ const state = {
     segmentCount: 0,
     liveElement: null
   },
+  support: getRuntimeSupport(),
+  recognitionWatchdog: null,
   diagnostics: createDiagnosticSession(null),
   history: loadJson(STORAGE_KEYS.history, []),
   settings: { ...DEFAULT_SETTINGS, ...loadJson(STORAGE_KEYS.settings, {}) }
@@ -68,7 +75,8 @@ bindEvents();
 registerServiceWorker();
 
 window.gneDiagnostics = {
-  getReport: buildEvaluationReport
+  getReport: buildEvaluationReport,
+  getSupport: buildSupportReport
 };
 
 function bindEvents() {
@@ -124,10 +132,14 @@ function bindEvents() {
   });
 
   exportMetricsButton?.addEventListener("click", exportEvaluationReport);
+  copyDiagnosticsButton?.addEventListener("click", copyDiagnosticsReport);
 }
 
 async function startSession() {
-  if (!SpeechRecognition) {
+  state.support = getRuntimeSupport();
+  renderSupportAlert(state.support);
+
+  if (!state.support.hasSpeechRecognition) {
     setStatus("error", "不可用", "当前浏览器不支持实时识别");
     return;
   }
@@ -148,6 +160,13 @@ async function startSession() {
     startRecognition();
     updateControls();
   } catch (error) {
+    renderSupportAlert(state.support, {
+      kind: "microphone-error",
+      title: "无法打开麦克风",
+      body: state.support.isWeChat
+        ? "微信内置浏览器可能没有给网页麦克风权限。请在系统浏览器打开，并允许麦克风。"
+        : "请允许麦克风权限；如果仍失败，请检查系统权限或换浏览器测试。"
+    });
     setStatus("error", "麦克风", getMicrophoneErrorMessage(error));
   }
 }
@@ -163,11 +182,28 @@ function startRecognition() {
 
   recognition.onstart = () => {
     recordRecognitionStart();
+    startRecognitionWatchdog();
     setStatus("listening", "正在听", getLanguageLabel(state.settings.sourceLanguage));
     updateControls();
   };
 
+  recognition.onaudiostart = () => {
+    recordAudioEvent("audiostart");
+  };
+
+  recognition.onsoundstart = () => {
+    recordAudioEvent("soundstart");
+    setStatus("listening", "有声音", "正在判断语音");
+  };
+
+  recognition.onspeechstart = () => {
+    recordAudioEvent("speechstart");
+    setStatus("listening", "检测到说话", "正在识别");
+  };
+
   recognition.onresult = (event) => {
+    clearRecognitionWatchdog();
+    hideNoResultAlert();
     const eventStartedAt = getDiagnosticElapsedMs();
     let interim = "";
     let interimCount = 0;
@@ -218,7 +254,12 @@ function startRecognition() {
       return;
     }
 
+    clearRecognitionWatchdog();
     recordRecognitionError(event.error);
+    renderSupportAlert(state.support, {
+      title: "识别服务没有启动",
+      body: getRecognitionRecoveryMessage(event.error)
+    });
     setStatus("error", "出错", getRecognitionErrorMessage(event.error));
     state.listening = false;
     state.paused = false;
@@ -233,8 +274,20 @@ function startRecognition() {
   };
 
   recognition.onend = () => {
+    clearRecognitionWatchdog();
     recordRecognitionEnd("ended");
     state.recognition = null;
+    if (shouldStopFastRestartLoop()) {
+      state.listening = false;
+      state.paused = false;
+      renderSupportAlert(state.support, {
+        title: "没有收到识别结果",
+        body: getNoResultRecoveryMessage()
+      });
+      setStatus("error", "无结果", "请换浏览器测试");
+      updateControls();
+      return;
+    }
     if (state.listening && !state.paused) {
       window.setTimeout(() => {
         if (state.listening && !state.paused) startRecognition();
@@ -250,10 +303,17 @@ function startRecognition() {
 
   try {
     recognition.start();
+    startRecognitionWatchdog();
   } catch {
+    clearRecognitionWatchdog();
+    recordRecognitionError("start-failed");
     state.recognition = null;
     state.listening = false;
     state.paused = false;
+    renderSupportAlert(state.support, {
+      title: "识别启动失败",
+      body: getNoResultRecoveryMessage()
+    });
     setStatus("error", "出错", "识别启动失败");
     updateControls();
   }
@@ -270,6 +330,7 @@ function stopRecognition() {
   const recognition = state.recognition;
   state.recognition = null;
   recognition.onend = null;
+  clearRecognitionWatchdog();
   recordRecognitionEnd("stopped");
   try {
     recognition.stop();
@@ -503,6 +564,149 @@ function renderHistory() {
   historyList.append(fragment);
 }
 
+function getRuntimeSupport() {
+  const userAgent = navigator.userAgent || "";
+  return {
+    appVersion: app?.dataset?.appVersion || "",
+    pageUrl: window.location.href,
+    isSecureContext: window.isSecureContext,
+    isWeChat: /MicroMessenger/i.test(userAgent),
+    hasSpeechRecognition: Boolean(SpeechRecognition),
+    hasNativeSpeechRecognition: "SpeechRecognition" in window,
+    hasWebkitSpeechRecognition: "webkitSpeechRecognition" in window,
+    hasMediaDevices: Boolean(navigator.mediaDevices?.getUserMedia),
+    hasClipboard: Boolean(navigator.clipboard?.writeText),
+    platform: navigator.platform || "",
+    language: navigator.language || "",
+    userAgent
+  };
+}
+
+function renderSupportAlert(support, override = null) {
+  if (!supportAlert) return;
+
+  const message = override || getSupportMessage(support);
+  if (!message) {
+    supportAlert.hidden = true;
+    supportAlert.replaceChildren();
+    delete supportAlert.dataset.kind;
+    return;
+  }
+
+  supportAlert.dataset.kind = message.kind || "support";
+  supportAlert.hidden = false;
+  supportAlert.replaceChildren();
+
+  const title = document.createElement("strong");
+  title.textContent = message.title;
+
+  const body = document.createElement("span");
+  body.textContent = message.body;
+
+  supportAlert.append(title, body);
+}
+
+function getSupportMessage(support) {
+  if (!support.hasSpeechRecognition) {
+    return {
+      kind: "unsupported",
+      title: "当前浏览器不支持语音识别",
+      body: support.isWeChat
+        ? "微信内置浏览器通常不能稳定使用网页语音识别。请点右上角菜单，选择在浏览器打开；安卓优先用 Chrome 或 Edge。"
+        : "请改用支持网页语音识别的浏览器测试；安卓优先 Chrome 或 Edge，iPhone 优先 Safari。"
+    };
+  }
+
+  if (support.isWeChat) {
+    return {
+      kind: "wechat",
+      title: "微信内打开可能无法识别",
+      body: "页面能打开不代表语音识别可用。如果点击开始后没有字幕，请点右上角菜单，选择在浏览器打开。"
+    };
+  }
+
+  if (!support.isSecureContext) {
+    return {
+      kind: "insecure",
+      title: "当前连接不安全",
+      body: "麦克风和语音识别通常需要 HTTPS 或 localhost。请使用线上 HTTPS 链接测试。"
+    };
+  }
+
+  if (!support.hasMediaDevices) {
+    return {
+      kind: "microphone",
+      title: "无法检测麦克风接口",
+      body: "当前浏览器可能无法授权麦克风。如果开始后没有字幕，请换系统浏览器测试。"
+    };
+  }
+
+  return null;
+}
+
+function startRecognitionWatchdog() {
+  clearRecognitionWatchdog();
+  state.recognitionWatchdog = window.setTimeout(() => {
+    if (!state.listening || state.paused || state.partialText || state.segments.length > 0) return;
+    renderSupportAlert(state.support, {
+      kind: "no-result",
+      title: "还没有收到识别结果",
+      body: getNoResultRecoveryMessage()
+    });
+  }, NO_RESULT_TIMEOUT_MS);
+}
+
+function clearRecognitionWatchdog() {
+  if (!state.recognitionWatchdog) return;
+  window.clearTimeout(state.recognitionWatchdog);
+  state.recognitionWatchdog = null;
+}
+
+function hideNoResultAlert() {
+  if (supportAlert?.dataset.kind === "no-result") {
+    renderSupportAlert(state.support);
+  }
+}
+
+function shouldStopFastRestartLoop() {
+  if (state.diagnostics.resultEvents.some((event) => event.interimCount > 0 || event.finalCount > 0)) {
+    return false;
+  }
+
+  const starts = state.diagnostics.recognitionStarts;
+  if (starts.length < FAST_RESTART_LIMIT) return false;
+
+  const first = starts[starts.length - FAST_RESTART_LIMIT];
+  const last = starts[starts.length - 1];
+  return last.elapsedMs - first.elapsedMs <= FAST_RESTART_WINDOW_MS;
+}
+
+function getNoResultRecoveryMessage() {
+  if (state.support.isWeChat) {
+    return "如果你已经在说话但没有字幕，基本可以判定微信内置浏览器不支持当前网页识别。请点右上角菜单，选择在浏览器打开。";
+  }
+
+  return "如果你已经在说话但没有字幕，请确认麦克风授权、调高音量，并优先用 Chrome、Edge 或 Safari 打开。";
+}
+
+function getRecognitionRecoveryMessage(error) {
+  if (error === "not-allowed" || error === "service-not-allowed") {
+    return state.support.isWeChat
+      ? "微信内置浏览器可能禁止网页语音识别。请在系统浏览器打开，并允许麦克风。"
+      : "请在浏览器地址栏或系统设置里允许麦克风，然后重新开始。";
+  }
+
+  if (error === "network") {
+    return "语音识别服务可能需要稳定网络。请切换网络后重试，或改用系统浏览器测试。";
+  }
+
+  if (error === "audio-capture") {
+    return "当前浏览器没有读到麦克风。请检查麦克风权限，或换系统浏览器测试。";
+  }
+
+  return getNoResultRecoveryMessage();
+}
+
 function createDiagnosticSession(startedAt) {
   return {
     schemaVersion: "gne-eval-v1",
@@ -515,6 +719,7 @@ function createDiagnosticSession(startedAt) {
     userAgent: navigator.userAgent,
     recognitionStarts: [],
     recognitionEnds: [],
+    audioEvents: [],
     resultEvents: [],
     renderSamples: [],
     errors: []
@@ -545,6 +750,18 @@ function recordRecognitionError(error) {
     elapsedMs: getDiagnosticElapsedMs(),
     error
   });
+}
+
+function recordAudioEvent(type) {
+  if (!state.diagnostics.startedAt) return;
+  pushCapped(
+    state.diagnostics.audioEvents,
+    {
+      elapsedMs: getDiagnosticElapsedMs(),
+      type
+    },
+    500
+  );
 }
 
 function recordResultEvent(event) {
@@ -578,6 +795,49 @@ function exportEvaluationReport() {
   }, 1400);
 }
 
+async function copyDiagnosticsReport() {
+  const report = buildSupportReport();
+  const text = JSON.stringify(report, null, 2);
+
+  try {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(text);
+    } else {
+      copyTextWithFallback(text);
+    }
+    setTemporaryButtonText(copyDiagnosticsButton, "已复制");
+  } catch {
+    downloadJson(report, `grandpas-new-ears-diagnostics-${formatFileDate(new Date())}.json`);
+    setTemporaryButtonText(copyDiagnosticsButton, "已下载");
+  }
+}
+
+function buildSupportReport() {
+  const durationMs = state.sessionStartedAt ? Date.now() - state.sessionStartedAt.getTime() : 0;
+  return {
+    schemaVersion: "gne-support-v1",
+    exportedAt: new Date().toISOString(),
+    support: getRuntimeSupport(),
+    status: {
+      label: statusLabel.textContent,
+      text: statusText.textContent,
+      state: statusPill.dataset.state
+    },
+    session: {
+      startedAt: state.sessionStartedAt?.toISOString() || null,
+      listening: state.listening,
+      paused: state.paused,
+      segmentCount: state.segments.length,
+      partialTextLength: state.partialText.length
+    },
+    summary: summarizeDiagnostics(durationMs),
+    errors: state.diagnostics.errors,
+    audioEvents: state.diagnostics.audioEvents,
+    recognitionStarts: state.diagnostics.recognitionStarts,
+    recognitionEnds: state.diagnostics.recognitionEnds
+  };
+}
+
 function buildEvaluationReport() {
   const exportedAt = new Date();
   const startedAt = state.sessionStartedAt;
@@ -588,6 +848,7 @@ function buildEvaluationReport() {
     schemaVersion: "gne-eval-v1",
     exportedAt: exportedAt.toISOString(),
     appVersion: app.dataset.appVersion || "",
+    support: getRuntimeSupport(),
     sourceLanguage: state.settings.sourceLanguage,
     targetLanguage: state.settings.targetLanguage,
     session: {
@@ -612,6 +873,7 @@ function buildEvaluationReport() {
     diagnostics: {
       recognitionStarts: state.diagnostics.recognitionStarts,
       recognitionEnds: state.diagnostics.recognitionEnds,
+      audioEvents: state.diagnostics.audioEvents,
       resultEvents: state.diagnostics.resultEvents,
       renderSamples: state.diagnostics.renderSamples,
       errors: state.diagnostics.errors
@@ -636,6 +898,7 @@ function summarizeDiagnostics(durationMs) {
     recognitionStartCount: state.diagnostics.recognitionStarts.length,
     recognitionRestartCount: Math.max(0, state.diagnostics.recognitionStarts.length - 1),
     recognitionEndCount: state.diagnostics.recognitionEnds.length,
+    audioEventCount: state.diagnostics.audioEvents.length,
     errorCount: state.diagnostics.errors.length,
     resultEventCount: resultEvents.length,
     interimEventCount,
@@ -713,7 +976,7 @@ function applyResponsiveDefaults() {
 }
 
 function updateControls() {
-  startButton.disabled = state.listening && !state.paused;
+  startButton.disabled = !state.support.hasSpeechRecognition || (state.listening && !state.paused);
   pauseButton.disabled = !state.listening;
   stopButton.disabled = !state.sessionStartedAt;
 
@@ -730,13 +993,16 @@ function updateControls() {
 }
 
 function updateSupportState() {
-  if (SpeechRecognition) {
-    setStatus("idle", "待机", "准备开始");
+  state.support = getRuntimeSupport();
+  renderSupportAlert(state.support);
+  startButton.disabled = !state.support.hasSpeechRecognition;
+
+  if (state.support.hasSpeechRecognition) {
+    setStatus("idle", "待机", state.support.isWeChat ? "建议用浏览器打开" : "准备开始");
     return;
   }
 
-  startButton.disabled = true;
-  setStatus("error", "不可用", "当前浏览器不支持实时识别");
+  setStatus("error", "不可用", state.support.isWeChat ? "请用浏览器打开" : "当前浏览器不支持实时识别");
 }
 
 async function ensureMicrophonePermission() {
@@ -803,6 +1069,8 @@ function formatTime(value) {
 function getMicrophoneErrorMessage(error) {
   if (error?.name === "NotAllowedError") return "麦克风未授权";
   if (error?.name === "NotFoundError") return "未找到麦克风";
+  if (error?.name === "NotReadableError") return "麦克风被占用";
+  if (error?.name === "SecurityError") return "当前环境禁止麦克风";
   return "无法打开麦克风";
 }
 
@@ -812,6 +1080,7 @@ function getRecognitionErrorMessage(error) {
     "not-allowed": "麦克风未授权",
     network: "网络连接异常",
     "service-not-allowed": "识别服务不可用",
+    "start-failed": "识别启动失败",
     aborted: "识别已中断",
     language: "语言暂不支持"
   };
@@ -864,12 +1133,33 @@ function downloadJson(data, filename) {
   window.setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
+function copyTextWithFallback(text) {
+  const textarea = document.createElement("textarea");
+  textarea.value = text;
+  textarea.setAttribute("readonly", "");
+  textarea.style.position = "fixed";
+  textarea.style.top = "-1000px";
+  document.body.append(textarea);
+  textarea.select();
+  document.execCommand("copy");
+  textarea.remove();
+}
+
+function setTemporaryButtonText(button, text) {
+  if (!button) return;
+  const original = button.textContent;
+  button.textContent = text;
+  window.setTimeout(() => {
+    button.textContent = original;
+  }, 1400);
+}
+
 function formatFileDate(date) {
   return date.toISOString().replaceAll(":", "-").replace(/\.\d{3}Z$/, "Z");
 }
 
 function createId() {
-  if (crypto.randomUUID) return crypto.randomUUID();
+  if (window.crypto?.randomUUID) return window.crypto.randomUUID();
   return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
 }
 

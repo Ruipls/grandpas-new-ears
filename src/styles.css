@@ -270,6 +270,31 @@ button {
   background: var(--surface);
 }
 
+.support-alert {
+  display: grid;
+  gap: 0.35rem;
+  border: 1px solid color-mix(in srgb, var(--warning) 55%, var(--line));
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--warning) 14%, var(--surface));
+  padding: 0.85rem;
+  color: var(--text);
+  line-height: 1.45;
+}
+
+.support-alert[hidden] {
+  display: none !important;
+}
+
+.support-alert strong {
+  color: var(--warning);
+  font-size: 0.95rem;
+}
+
+.support-alert span {
+  color: var(--muted);
+  font-size: 0.92rem;
+}
+
 .primary-controls {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 4rem 4rem;
@@ -456,9 +481,14 @@ button {
   gap: 0.65rem;
 }
 
-.metrics-action {
-  width: 100%;
+.diagnostic-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.65rem;
   margin-top: 0.8rem;
+}
+
+.metrics-action {
   background: var(--surface-strong);
   color: var(--muted);
   font-size: 0.95rem;
@@ -662,5 +692,9 @@ button {
 
   .control-panel {
     max-height: 46svh;
+  }
+
+  .diagnostic-actions {
+    grid-template-columns: 1fr;
   }
 }

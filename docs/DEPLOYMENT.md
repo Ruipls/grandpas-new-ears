@@ -8,7 +8,7 @@
 GitHub Pages：
 
 ```text
-https://ruipls.github.io/grandpas-new-ears/?v=20260705-eval1
+https://ruipls.github.io/grandpas-new-ears/?v=20260705-wechat1
 ```
 
 当前 GitHub Pages 发布源为 `UIimprove` 分支，根目录 `/`。
@@ -23,6 +23,7 @@ https://ruipls.github.io/grandpas-new-ears/health.html
 
 - 健康检查页也打不开：更可能是当前网络、DNS、浏览器或 GitHub Pages 域名可达性问题。
 - 健康检查页能打开、主页面打不开：更可能是应用缓存、service worker 或浏览器兼容问题。
+- 主页面能打开但微信内无法识别语音：更可能是微信内置浏览器不支持或限制网页语音识别，请用系统浏览器打开。
 
 ## Android 兼容补丁
 

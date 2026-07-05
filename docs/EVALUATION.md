@@ -59,7 +59,7 @@
 
 ### 测试步骤
 
-1. 打开线上链接：`https://ruipls.github.io/grandpas-new-ears/?v=20260705-eval1`
+1. 打开线上链接：`https://ruipls.github.io/grandpas-new-ears/?v=20260705-wechat1`
 2. 选择讲话语言。
 3. 点击开始，朗读固定参考文本或进行真实对话。
 4. 结束后点击“导出评测数据”。
@@ -104,3 +104,4 @@ npm run eval:transcript -- --reference reference.txt --hypothesis export.json
 - 导出的 JSON 包含字幕、识别事件、重启/错误、渲染耗时、按分钟聚合的窗口指标。
 - 增加 `scripts/evaluate-transcript.mjs`，用于计算固定文本测试的 CER 和 token 错误率。
 - 将字幕渲染从全量重绘改为增量更新，降低长会话中 UI 变慢的概率。
+- 增加“复制诊断信息”按钮，用于排查微信内置浏览器、麦克风权限和语音识别能力。
