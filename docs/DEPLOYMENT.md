@@ -8,7 +8,7 @@
 GitHub Pages：
 
 ```text
-https://ruipls.github.io/grandpas-new-ears/?v=20260629-live1
+https://ruipls.github.io/grandpas-new-ears/?v=20260705-eval1
 ```
 
 当前 GitHub Pages 发布源为 `UIimprove` 分支，根目录 `/`。

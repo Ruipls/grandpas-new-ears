@@ -456,6 +456,14 @@ button {
   gap: 0.65rem;
 }
 
+.metrics-action {
+  width: 100%;
+  margin-top: 0.8rem;
+  background: var(--surface-strong);
+  color: var(--muted);
+  font-size: 0.95rem;
+}
+
 .switch {
   min-height: 3rem;
   display: flex;

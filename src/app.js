@@ -40,6 +40,7 @@ const sessionSummary = document.querySelector("#sessionSummary");
 const historyCount = document.querySelector("#historyCount");
 const historyList = document.querySelector("#historyList");
 const clearHistoryButton = document.querySelector("#clearHistoryButton");
+const exportMetricsButton = document.querySelector("#exportMetricsButton");
 const fontButtons = Array.from(document.querySelectorAll("[data-font]"));
 
 const state = {
@@ -49,6 +50,11 @@ const state = {
   sessionStartedAt: null,
   segments: [],
   partialText: "",
+  render: {
+    segmentCount: 0,
+    liveElement: null
+  },
+  diagnostics: createDiagnosticSession(null),
   history: loadJson(STORAGE_KEYS.history, []),
   settings: { ...DEFAULT_SETTINGS, ...loadJson(STORAGE_KEYS.settings, {}) }
 };
@@ -60,6 +66,10 @@ updateSupportState();
 syncCaptionState();
 bindEvents();
 registerServiceWorker();
+
+window.gneDiagnostics = {
+  getReport: buildEvaluationReport
+};
 
 function bindEvents() {
   startButton.addEventListener("click", startSession);
@@ -75,7 +85,7 @@ function bindEvents() {
   targetLanguage.addEventListener("change", () => {
     state.settings.targetLanguage = targetLanguage.value;
     saveSettings();
-    renderTranscript();
+    renderTranscript({ full: true });
     if (targetLanguage.value) {
       setStatus("paused", "原文", "翻译接口下一步接入");
     }
@@ -112,6 +122,8 @@ function bindEvents() {
     localStorage.setItem(STORAGE_KEYS.history, JSON.stringify(state.history));
     renderHistory();
   });
+
+  exportMetricsButton?.addEventListener("click", exportEvaluationReport);
 }
 
 async function startSession() {
@@ -126,7 +138,10 @@ async function startSession() {
       state.sessionStartedAt = new Date();
       state.segments = [];
       state.partialText = "";
-      renderTranscript();
+      state.render.segmentCount = 0;
+      state.render.liveElement = null;
+      state.diagnostics = createDiagnosticSession(state.sessionStartedAt);
+      renderTranscript({ full: true });
     }
     state.listening = true;
     state.paused = false;
@@ -147,12 +162,20 @@ function startRecognition() {
   recognition.maxAlternatives = 1;
 
   recognition.onstart = () => {
+    recordRecognitionStart();
     setStatus("listening", "正在听", getLanguageLabel(state.settings.sourceLanguage));
     updateControls();
   };
 
   recognition.onresult = (event) => {
+    const eventStartedAt = getDiagnosticElapsedMs();
     let interim = "";
+    let interimCount = 0;
+    let interimChars = 0;
+    let finalCount = 0;
+    let finalChars = 0;
+    let confidenceTotal = 0;
+    let confidenceCount = 0;
 
     for (let index = event.resultIndex; index < event.results.length; index += 1) {
       const result = event.results[index];
@@ -161,12 +184,30 @@ function startRecognition() {
       if (!text) continue;
 
       if (result.isFinal) {
+        finalCount += 1;
+        finalChars += text.length;
+        if (typeof result[0]?.confidence === "number") {
+          confidenceTotal += result[0].confidence;
+          confidenceCount += 1;
+        }
         appendSegment(text, result[0]?.confidence);
       } else {
+        interimCount += 1;
+        interimChars += text.length;
         interim += `${text} `;
       }
     }
 
+    recordResultEvent({
+      elapsedMs: eventStartedAt,
+      resultIndex: event.resultIndex,
+      resultTotal: event.results.length,
+      interimCount,
+      interimChars,
+      finalCount,
+      finalChars,
+      averageConfidence: confidenceCount ? confidenceTotal / confidenceCount : null
+    });
     state.partialText = interim.trim();
     renderTranscript();
   };
@@ -177,6 +218,7 @@ function startRecognition() {
       return;
     }
 
+    recordRecognitionError(event.error);
     setStatus("error", "出错", getRecognitionErrorMessage(event.error));
     state.listening = false;
     state.paused = false;
@@ -191,6 +233,7 @@ function startRecognition() {
   };
 
   recognition.onend = () => {
+    recordRecognitionEnd("ended");
     state.recognition = null;
     if (state.listening && !state.paused) {
       window.setTimeout(() => {
@@ -227,6 +270,7 @@ function stopRecognition() {
   const recognition = state.recognition;
   state.recognition = null;
   recognition.onend = null;
+  recordRecognitionEnd("stopped");
   try {
     recognition.stop();
   } catch {
@@ -327,37 +371,65 @@ function resetSession() {
   state.sessionStartedAt = null;
   state.segments = [];
   state.partialText = "";
-  renderTranscript();
+  state.render.segmentCount = 0;
+  state.render.liveElement = null;
+  renderTranscript({ full: true });
   updateControls();
   setStatus("idle", "待机", "准备开始");
 }
 
-function renderTranscript() {
-  transcriptList.replaceChildren();
+function renderTranscript(options = {}) {
+  const renderStartedAt = performance.now();
+  const fullRender = options.full || state.render.segmentCount > state.segments.length;
+
+  if (fullRender) {
+    transcriptList.replaceChildren();
+    state.render.segmentCount = 0;
+    state.render.liveElement = null;
+  }
 
   const fragment = document.createDocumentFragment();
 
-  state.segments.forEach((segment, index) => {
-    fragment.append(createSegmentElement(segment, index));
-  });
-
-  if (state.partialText) {
-    fragment.append(
-      createSegmentElement(
-        {
-          text: state.partialText,
-          sourceLanguage: state.settings.sourceLanguage,
-          targetLanguage: state.settings.targetLanguage
-        },
-        state.segments.length,
-        { live: true }
-      )
-    );
+  for (let index = state.render.segmentCount; index < state.segments.length; index += 1) {
+    fragment.append(createSegmentElement(state.segments[index], index));
   }
 
-  transcriptList.append(fragment);
+  if (fragment.childNodes.length) {
+    transcriptList.append(fragment);
+    state.render.segmentCount = state.segments.length;
+  }
+
+  syncLiveSegment();
   transcriptList.scrollTop = transcriptList.scrollHeight;
   syncCaptionState();
+  recordRenderSample(performance.now() - renderStartedAt, fullRender);
+}
+
+function syncLiveSegment() {
+  if (!state.partialText) {
+    state.render.liveElement?.remove();
+    state.render.liveElement = null;
+    return;
+  }
+
+  if (!state.render.liveElement || !transcriptList.contains(state.render.liveElement)) {
+    state.render.liveElement = createSegmentElement(
+      {
+        text: state.partialText,
+        sourceLanguage: state.settings.sourceLanguage,
+        targetLanguage: state.settings.targetLanguage
+      },
+      state.segments.length,
+      { live: true }
+    );
+    transcriptList.append(state.render.liveElement);
+    return;
+  }
+
+  const liveText = state.render.liveElement.querySelector(".segment-text");
+  if (liveText.textContent !== state.partialText) {
+    liveText.textContent = state.partialText;
+  }
 }
 
 function createSegmentElement(segment, index, options = {}) {
@@ -429,6 +501,194 @@ function renderHistory() {
   });
 
   historyList.append(fragment);
+}
+
+function createDiagnosticSession(startedAt) {
+  return {
+    schemaVersion: "gne-eval-v1",
+    sessionId: createId(),
+    startedAt: startedAt ? startedAt.toISOString() : null,
+    startedAtMs: startedAt ? performance.now() : null,
+    appVersion: app.dataset.appVersion || "",
+    sourceLanguage: sourceLanguage?.value || DEFAULT_SETTINGS.sourceLanguage,
+    targetLanguage: targetLanguage?.value || DEFAULT_SETTINGS.targetLanguage,
+    userAgent: navigator.userAgent,
+    recognitionStarts: [],
+    recognitionEnds: [],
+    resultEvents: [],
+    renderSamples: [],
+    errors: []
+  };
+}
+
+function recordRecognitionStart() {
+  if (!state.diagnostics.startedAt) return;
+  state.diagnostics.recognitionStarts.push({
+    elapsedMs: getDiagnosticElapsedMs(),
+    language: state.settings.sourceLanguage
+  });
+}
+
+function recordRecognitionEnd(reason) {
+  if (!state.diagnostics.startedAt) return;
+  state.diagnostics.recognitionEnds.push({
+    elapsedMs: getDiagnosticElapsedMs(),
+    reason,
+    listening: state.listening,
+    paused: state.paused
+  });
+}
+
+function recordRecognitionError(error) {
+  if (!state.diagnostics.startedAt) return;
+  state.diagnostics.errors.push({
+    elapsedMs: getDiagnosticElapsedMs(),
+    error
+  });
+}
+
+function recordResultEvent(event) {
+  if (!state.diagnostics.startedAt) return;
+  pushCapped(state.diagnostics.resultEvents, event, 2000);
+}
+
+function recordRenderSample(durationMs, fullRender) {
+  if (!state.diagnostics.startedAt) return;
+  pushCapped(
+    state.diagnostics.renderSamples,
+    {
+      elapsedMs: getDiagnosticElapsedMs(),
+      durationMs: roundMetric(durationMs),
+      fullRender,
+      segmentCount: state.segments.length,
+      partialChars: state.partialText.length
+    },
+    2000
+  );
+}
+
+function exportEvaluationReport() {
+  const report = buildEvaluationReport();
+  downloadJson(report, `grandpas-new-ears-eval-${formatFileDate(new Date())}.json`);
+
+  if (!exportMetricsButton) return;
+  exportMetricsButton.textContent = "已导出";
+  window.setTimeout(() => {
+    exportMetricsButton.textContent = "导出评测数据";
+  }, 1400);
+}
+
+function buildEvaluationReport() {
+  const exportedAt = new Date();
+  const startedAt = state.sessionStartedAt;
+  const durationMs = startedAt ? exportedAt.getTime() - startedAt.getTime() : 0;
+  const transcriptText = state.segments.map((segment) => segment.text).join("\n");
+
+  return {
+    schemaVersion: "gne-eval-v1",
+    exportedAt: exportedAt.toISOString(),
+    appVersion: app.dataset.appVersion || "",
+    sourceLanguage: state.settings.sourceLanguage,
+    targetLanguage: state.settings.targetLanguage,
+    session: {
+      id: state.diagnostics.sessionId,
+      startedAt: startedAt?.toISOString() || null,
+      durationMs,
+      durationText: startedAt ? getSessionDurationText() : "0 秒",
+      segmentCount: state.segments.length,
+      finalChars: transcriptText.length,
+      partialChars: state.partialText.length
+    },
+    summary: summarizeDiagnostics(durationMs),
+    transcriptText,
+    partialText: state.partialText,
+    segments: state.segments.map((segment, index) => ({
+      index: index + 1,
+      text: segment.text,
+      confidence: segment.confidence,
+      createdAt: segment.createdAt,
+      sourceLanguage: segment.sourceLanguage
+    })),
+    diagnostics: {
+      recognitionStarts: state.diagnostics.recognitionStarts,
+      recognitionEnds: state.diagnostics.recognitionEnds,
+      resultEvents: state.diagnostics.resultEvents,
+      renderSamples: state.diagnostics.renderSamples,
+      errors: state.diagnostics.errors
+    }
+  };
+}
+
+function summarizeDiagnostics(durationMs) {
+  const resultEvents = state.diagnostics.resultEvents;
+  const renderSamples = state.diagnostics.renderSamples;
+  const confidenceValues = resultEvents
+    .map((event) => event.averageConfidence)
+    .filter((value) => typeof value === "number");
+  const renderDurations = renderSamples.map((sample) => sample.durationMs);
+  const finalResultCount = sum(resultEvents.map((event) => event.finalCount));
+  const interimEventCount = resultEvents.filter((event) => event.interimCount > 0).length;
+  const firstResult = resultEvents.find((event) => event.interimCount > 0 || event.finalCount > 0);
+  const firstFinal = resultEvents.find((event) => event.finalCount > 0);
+
+  return {
+    durationMs,
+    recognitionStartCount: state.diagnostics.recognitionStarts.length,
+    recognitionRestartCount: Math.max(0, state.diagnostics.recognitionStarts.length - 1),
+    recognitionEndCount: state.diagnostics.recognitionEnds.length,
+    errorCount: state.diagnostics.errors.length,
+    resultEventCount: resultEvents.length,
+    interimEventCount,
+    finalResultCount,
+    timeToFirstResultMs: firstResult ? roundMetric(firstResult.elapsedMs) : null,
+    timeToFirstFinalMs: firstFinal ? roundMetric(firstFinal.elapsedMs) : null,
+    averageConfidence: average(confidenceValues),
+    renderAverageMs: average(renderDurations),
+    renderP95Ms: percentile(renderDurations, 95),
+    renderMaxMs: renderDurations.length ? Math.max(...renderDurations) : null,
+    windows: buildDiagnosticWindows(60000)
+  };
+}
+
+function buildDiagnosticWindows(windowSizeMs) {
+  const durationMs = state.sessionStartedAt ? Date.now() - state.sessionStartedAt.getTime() : 0;
+  const windowCount = Math.max(1, Math.ceil(durationMs / windowSizeMs));
+  const windows = Array.from({ length: windowCount }, (_, index) => ({
+    index,
+    startMs: index * windowSizeMs,
+    endMs: (index + 1) * windowSizeMs,
+    resultEventCount: 0,
+    interimEventCount: 0,
+    finalResultCount: 0,
+    confidenceValues: [],
+    renderDurations: []
+  }));
+
+  state.diagnostics.resultEvents.forEach((event) => {
+    const bucket = windows[Math.min(windows.length - 1, Math.floor(event.elapsedMs / windowSizeMs))];
+    bucket.resultEventCount += 1;
+    if (event.interimCount > 0) bucket.interimEventCount += 1;
+    bucket.finalResultCount += event.finalCount;
+    if (typeof event.averageConfidence === "number") bucket.confidenceValues.push(event.averageConfidence);
+  });
+
+  state.diagnostics.renderSamples.forEach((sample) => {
+    const bucket = windows[Math.min(windows.length - 1, Math.floor(sample.elapsedMs / windowSizeMs))];
+    bucket.renderDurations.push(sample.durationMs);
+  });
+
+  return windows.map((window) => ({
+    index: window.index,
+    startMs: window.startMs,
+    endMs: window.endMs,
+    resultEventCount: window.resultEventCount,
+    interimEventCount: window.interimEventCount,
+    finalResultCount: window.finalResultCount,
+    averageConfidence: average(window.confidenceValues),
+    renderAverageMs: average(window.renderDurations),
+    renderP95Ms: percentile(window.renderDurations, 95),
+    renderMaxMs: window.renderDurations.length ? Math.max(...window.renderDurations) : null
+  }));
 }
 
 function applySettings() {
@@ -557,6 +817,55 @@ function getRecognitionErrorMessage(error) {
   };
 
   return messages[error] || "识别失败";
+}
+
+function getDiagnosticElapsedMs() {
+  if (!state.diagnostics.startedAtMs) return 0;
+  return performance.now() - state.diagnostics.startedAtMs;
+}
+
+function pushCapped(list, item, limit) {
+  list.push(item);
+  if (list.length > limit) {
+    list.splice(0, list.length - limit);
+  }
+}
+
+function sum(values) {
+  return values.reduce((total, value) => total + value, 0);
+}
+
+function average(values) {
+  if (!values.length) return null;
+  return roundMetric(sum(values) / values.length);
+}
+
+function percentile(values, target) {
+  if (!values.length) return null;
+  const sorted = [...values].sort((left, right) => left - right);
+  const index = Math.min(sorted.length - 1, Math.ceil((target / 100) * sorted.length) - 1);
+  return roundMetric(sorted[index]);
+}
+
+function roundMetric(value) {
+  if (typeof value !== "number" || Number.isNaN(value)) return null;
+  return Math.round(value * 10) / 10;
+}
+
+function downloadJson(data, filename) {
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.append(link);
+  link.click();
+  link.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+function formatFileDate(date) {
+  return date.toISOString().replaceAll(":", "-").replace(/\.\d{3}Z$/, "Z");
 }
 
 function createId() {

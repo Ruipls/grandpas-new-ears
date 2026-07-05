@@ -35,7 +35,7 @@ Grandpa's New Ears 是一款面向听障人士、听力下降老人及其家人�
 GitHub Pages：
 
 ```text
-https://ruipls.github.io/grandpas-new-ears/?v=20260629-live1
+https://ruipls.github.io/grandpas-new-ears/?v=20260705-eval1
 ```
 
 健康检查页：
@@ -79,3 +79,4 @@ npm run build
 - [第一版实现说明](docs/V1_IMPLEMENTATION.md)
 - [部署与可达性说明](docs/DEPLOYMENT.md)
 - [当前工作状态](docs/CURRENT_STATUS.md)
+- [识别质量与速度评价体系](docs/EVALUATION.md)

@@ -1,15 +1,15 @@
 # 当前工作状态
 
-更新日期：2026-06-29
+更新日期：2026-07-05
 
 ## 当前线上版本
 
 - GitHub 仓库：`https://github.com/Ruipls/grandpas-new-ears`
 - 当前开发分支：`UIimprove`
 - GitHub Pages 发布源：`UIimprove` 分支，根目录 `/`
-- 最新测试链接：`https://ruipls.github.io/grandpas-new-ears/?v=20260629-live1`
-- 当前应用版本标记：`20260629-live1`
-- 当前 service worker 缓存：`grandpas-new-ears-v7`
+- 最新测试链接：`https://ruipls.github.io/grandpas-new-ears/?v=20260705-eval1`
+- 当前应用版本标记：`20260705-eval1`
+- 当前 service worker 缓存：`grandpas-new-ears-v8`
 
 ## 已完成进展
 
@@ -23,6 +23,8 @@
 - 增加设置区和已保存对话区的展开/收起指示 icon。
 - 增加 PWA manifest、PNG 图标、service worker、健康检查页和构建脚本。
 - GitHub Pages 已从 `main` 切换到 `UIimprove`，方便继续做 UI 迭代和手机测试。
+- 增加识别质量与速度评价体系、评测数据导出、CER/token 错误率计算脚本。
+- 将字幕渲染从全量重绘改为增量更新，减少长会话中 UI 变慢的概率。
 
 ## 当前边界
 
@@ -34,9 +36,9 @@
 
 ## 下次继续时优先事项
 
-1. 在 Android Chrome、Android Edge、iPhone Safari 上实际测试 `20260629-live1` 版本的实时大字字幕。
-2. 继续 UI 优化：主字幕阅读区层级、控制区压缩、按钮图标化、颜色和间距系统化。
-3. 为移动端补一轮视觉回归检查，重点看小屏横竖屏、超大字号、高对比度和长句换行。
+1. 用 `docs/EVALUATION.md` 的固定文本流程测试 `20260705-eval1`，导出评测 JSON 并计算 CER。
+2. 在 Android Chrome、Android Edge、iPhone Safari 上实际测试实时大字字幕。
+3. 继续 UI 优化：主字幕阅读区层级、控制区压缩、按钮图标化、颜色和间距系统化。
 4. 完成第二发布入口，优先 Cloudflare Pages；若面向中国大陆网络，再评估合规云厂商和 CDN。
 5. 设计后端流式识别/翻译方案，替代单纯依赖浏览器内置识别的当前实现。
 
@@ -55,3 +57,4 @@ npm run build
 - `docs/ROADMAP.md`
 - `docs/V1_IMPLEMENTATION.md`
 - `docs/DEPLOYMENT.md`
+- `docs/EVALUATION.md`
