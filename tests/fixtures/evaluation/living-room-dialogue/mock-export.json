@@ -1,0 +1,246 @@
+{
+  "schemaVersion": "gne-eval-v1",
+  "exportedAt": "2026-07-05T08:20:00.000Z",
+  "appVersion": "20260705-huawei1",
+  "support": {
+    "hasSpeechRecognition": true,
+    "isSecureContext": true,
+    "isWeChat": false,
+    "isHuaweiBrowser": false,
+    "isHarmonyOS": false
+  },
+  "sourceLanguage": "zh-CN",
+  "targetLanguage": "zh-CN",
+  "session": {
+    "id": "fixture-living-room-dialogue",
+    "startedAt": "2026-07-05T08:15:00.000Z",
+    "durationMs": 300000,
+    "durationText": "5 分钟",
+    "segmentCount": 6,
+    "finalChars": 125,
+    "partialChars": 0
+  },
+  "summary": {
+    "durationMs": 300000,
+    "recognitionStartCount": 2,
+    "recognitionRestartCount": 1,
+    "recognitionEndCount": 2,
+    "audioEventCount": 5,
+    "microphoneProbeCount": 1,
+    "errorCount": 0,
+    "resultEventCount": 14,
+    "interimEventCount": 8,
+    "finalResultCount": 6,
+    "timeToFirstResultMs": 940,
+    "timeToFirstFinalMs": 2300,
+    "averageConfidence": 0.84,
+    "renderAverageMs": 19.5,
+    "renderP95Ms": 28.4,
+    "renderMaxMs": 31.6,
+    "windows": [
+      {
+        "index": 0,
+        "startMs": 0,
+        "endMs": 60000,
+        "resultEventCount": 3,
+        "interimEventCount": 2,
+        "finalResultCount": 1,
+        "averageConfidence": 0.86,
+        "renderAverageMs": 16.8,
+        "renderP95Ms": 21.2,
+        "renderMaxMs": 22.3
+      },
+      {
+        "index": 1,
+        "startMs": 60000,
+        "endMs": 120000,
+        "resultEventCount": 4,
+        "interimEventCount": 2,
+        "finalResultCount": 2,
+        "averageConfidence": 0.85,
+        "renderAverageMs": 18.4,
+        "renderP95Ms": 24.1,
+        "renderMaxMs": 25.2
+      },
+      {
+        "index": 2,
+        "startMs": 120000,
+        "endMs": 180000,
+        "resultEventCount": 3,
+        "interimEventCount": 2,
+        "finalResultCount": 1,
+        "averageConfidence": 0.83,
+        "renderAverageMs": 21.5,
+        "renderP95Ms": 29.8,
+        "renderMaxMs": 31.6
+      },
+      {
+        "index": 3,
+        "startMs": 180000,
+        "endMs": 240000,
+        "resultEventCount": 2,
+        "interimEventCount": 1,
+        "finalResultCount": 1,
+        "averageConfidence": 0.84,
+        "renderAverageMs": 20.2,
+        "renderP95Ms": 27.1,
+        "renderMaxMs": 28.0
+      },
+      {
+        "index": 4,
+        "startMs": 240000,
+        "endMs": 300000,
+        "resultEventCount": 2,
+        "interimEventCount": 1,
+        "finalResultCount": 1,
+        "averageConfidence": 0.82,
+        "renderAverageMs": 22.0,
+        "renderP95Ms": 30.2,
+        "renderMaxMs": 30.8
+      }
+    ]
+  },
+  "transcriptText": "爷爷，晚饭已经准备好了，今天有青菜豆腐和鱼汤。\n你先坐在靠窗的位置，我把字幕打开。\n等一下妈妈会说周末安排，我们一起确认。\n明天上午九点去公园散步，中午回来休息，下午如果不下雨就去社区活动室。\n你看到字幕以后，可以点头或者告诉我们哪里没有看清。",
+  "partialText": "",
+  "segments": [
+    {
+      "index": 1,
+      "text": "爷爷，晚饭已经准备好了，今天有青菜豆腐和鱼汤。",
+      "confidence": 0.86,
+      "createdAt": "2026-07-05T08:15:03.000Z",
+      "sourceLanguage": "zh-CN"
+    },
+    {
+      "index": 2,
+      "text": "你先坐在靠窗的位置，我把字幕打开。",
+      "confidence": 0.85,
+      "createdAt": "2026-07-05T08:15:45.000Z",
+      "sourceLanguage": "zh-CN"
+    },
+    {
+      "index": 3,
+      "text": "等一下妈妈会说周末安排，我们一起确认。",
+      "confidence": 0.84,
+      "createdAt": "2026-07-05T08:16:28.000Z",
+      "sourceLanguage": "zh-CN"
+    },
+    {
+      "index": 4,
+      "text": "明天上午九点去公园散步，中午回来休息，下午如果不下雨就去社区活动室。",
+      "confidence": 0.83,
+      "createdAt": "2026-07-05T08:17:45.000Z",
+      "sourceLanguage": "zh-CN"
+    },
+    {
+      "index": 5,
+      "text": "你看到字幕以后，可以点头或者告诉我们哪里没有看清。",
+      "confidence": 0.82,
+      "createdAt": "2026-07-05T08:19:30.000Z",
+      "sourceLanguage": "zh-CN"
+    }
+  ],
+  "diagnostics": {
+    "recognitionStarts": [
+      {
+        "elapsedMs": 160,
+        "language": "zh-CN"
+      },
+      {
+        "elapsedMs": 149500,
+        "language": "zh-CN"
+      }
+    ],
+    "recognitionEnds": [
+      {
+        "elapsedMs": 149200,
+        "reason": "ended",
+        "listening": true,
+        "paused": false
+      },
+      {
+        "elapsedMs": 299200,
+        "reason": "stopped",
+        "listening": false,
+        "paused": false
+      }
+    ],
+    "audioEvents": [
+      {
+        "elapsedMs": 350,
+        "type": "audiostart"
+      },
+      {
+        "elapsedMs": 780,
+        "type": "soundstart"
+      },
+      {
+        "elapsedMs": 149000,
+        "type": "audioend"
+      },
+      {
+        "elapsedMs": 149850,
+        "type": "audiostart"
+      },
+      {
+        "elapsedMs": 298800,
+        "type": "audioend"
+      }
+    ],
+    "microphoneProbes": [
+      {
+        "elapsedMs": 0,
+        "ok": true,
+        "durationMs": 2000,
+        "peak": 0.18,
+        "average": 0.04,
+        "detectedSound": true
+      }
+    ],
+    "resultEvents": [
+      {
+        "elapsedMs": 940,
+        "resultIndex": 0,
+        "resultTotal": 1,
+        "interimCount": 1,
+        "interimChars": 10,
+        "finalCount": 0,
+        "finalChars": 0,
+        "averageConfidence": null
+      },
+      {
+        "elapsedMs": 2300,
+        "resultIndex": 0,
+        "resultTotal": 1,
+        "interimCount": 0,
+        "interimChars": 0,
+        "finalCount": 1,
+        "finalChars": 25,
+        "averageConfidence": 0.86
+      }
+    ],
+    "renderSamples": [
+      {
+        "elapsedMs": 960,
+        "durationMs": 14.2,
+        "fullRender": false,
+        "segmentCount": 0,
+        "partialChars": 10
+      },
+      {
+        "elapsedMs": 2320,
+        "durationMs": 17.6,
+        "fullRender": false,
+        "segmentCount": 1,
+        "partialChars": 0
+      },
+      {
+        "elapsedMs": 250000,
+        "durationMs": 28.4,
+        "fullRender": false,
+        "segmentCount": 5,
+        "partialChars": 0
+      }
+    ],
+    "errors": []
+  }
+}

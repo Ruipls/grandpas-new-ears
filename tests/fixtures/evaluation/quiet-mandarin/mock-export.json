@@ -1,0 +1,192 @@
+{
+  "schemaVersion": "gne-eval-v1",
+  "exportedAt": "2026-07-05T08:10:00.000Z",
+  "appVersion": "20260705-huawei1",
+  "support": {
+    "hasSpeechRecognition": true,
+    "isSecureContext": true,
+    "isWeChat": false,
+    "isHuaweiBrowser": false,
+    "isHarmonyOS": false
+  },
+  "sourceLanguage": "zh-CN",
+  "targetLanguage": "zh-CN",
+  "session": {
+    "id": "fixture-quiet-mandarin",
+    "startedAt": "2026-07-05T08:08:00.000Z",
+    "durationMs": 120000,
+    "durationText": "2 分钟",
+    "segmentCount": 5,
+    "finalChars": 108,
+    "partialChars": 0
+  },
+  "summary": {
+    "durationMs": 120000,
+    "recognitionStartCount": 1,
+    "recognitionRestartCount": 0,
+    "recognitionEndCount": 1,
+    "audioEventCount": 3,
+    "microphoneProbeCount": 1,
+    "errorCount": 0,
+    "resultEventCount": 9,
+    "interimEventCount": 4,
+    "finalResultCount": 5,
+    "timeToFirstResultMs": 780,
+    "timeToFirstFinalMs": 1820,
+    "averageConfidence": 0.89,
+    "renderAverageMs": 12.4,
+    "renderP95Ms": 18.6,
+    "renderMaxMs": 21.2,
+    "windows": [
+      {
+        "index": 0,
+        "startMs": 0,
+        "endMs": 60000,
+        "resultEventCount": 5,
+        "interimEventCount": 2,
+        "finalResultCount": 3,
+        "averageConfidence": 0.9,
+        "renderAverageMs": 11.8,
+        "renderP95Ms": 17.4,
+        "renderMaxMs": 18.1
+      },
+      {
+        "index": 1,
+        "startMs": 60000,
+        "endMs": 120000,
+        "resultEventCount": 4,
+        "interimEventCount": 2,
+        "finalResultCount": 2,
+        "averageConfidence": 0.88,
+        "renderAverageMs": 13.1,
+        "renderP95Ms": 19.2,
+        "renderMaxMs": 21.2
+      }
+    ]
+  },
+  "transcriptText": "今天天气很好，我们在客厅聊天。\n请把手机放在桌子中间，屏幕朝向爷爷。\n说话时不用太快，每句话之间停一停。\n这个应用会把听到的内容显示成大字字幕，方便爷爷马上看到。\n测试时请留意第一行文字出现的时间，也要观察长时间讲话后字幕是否还跟得上。",
+  "partialText": "",
+  "segments": [
+    {
+      "index": 1,
+      "text": "今天天气很好，我们在客厅聊天。",
+      "confidence": 0.91,
+      "createdAt": "2026-07-05T08:08:02.000Z",
+      "sourceLanguage": "zh-CN"
+    },
+    {
+      "index": 2,
+      "text": "请把手机放在桌子中间，屏幕朝向爷爷。",
+      "confidence": 0.88,
+      "createdAt": "2026-07-05T08:08:20.000Z",
+      "sourceLanguage": "zh-CN"
+    },
+    {
+      "index": 3,
+      "text": "说话时不用太快，每句话之间停一停。",
+      "confidence": 0.9,
+      "createdAt": "2026-07-05T08:08:45.000Z",
+      "sourceLanguage": "zh-CN"
+    },
+    {
+      "index": 4,
+      "text": "这个应用会把听到的内容显示成大字字幕，方便爷爷马上看到。",
+      "confidence": 0.89,
+      "createdAt": "2026-07-05T08:09:10.000Z",
+      "sourceLanguage": "zh-CN"
+    },
+    {
+      "index": 5,
+      "text": "测试时请留意第一行文字出现的时间，也要观察长时间讲话后字幕是否还跟得上。",
+      "confidence": 0.87,
+      "createdAt": "2026-07-05T08:09:50.000Z",
+      "sourceLanguage": "zh-CN"
+    }
+  ],
+  "diagnostics": {
+    "recognitionStarts": [
+      {
+        "elapsedMs": 120,
+        "language": "zh-CN"
+      }
+    ],
+    "recognitionEnds": [
+      {
+        "elapsedMs": 119800,
+        "reason": "stopped",
+        "listening": false,
+        "paused": false
+      }
+    ],
+    "audioEvents": [
+      {
+        "elapsedMs": 320,
+        "type": "audiostart"
+      },
+      {
+        "elapsedMs": 620,
+        "type": "soundstart"
+      },
+      {
+        "elapsedMs": 119300,
+        "type": "audioend"
+      }
+    ],
+    "microphoneProbes": [
+      {
+        "elapsedMs": 0,
+        "ok": true,
+        "durationMs": 2000,
+        "peak": 0.16,
+        "average": 0.03,
+        "detectedSound": true
+      }
+    ],
+    "resultEvents": [
+      {
+        "elapsedMs": 780,
+        "resultIndex": 0,
+        "resultTotal": 1,
+        "interimCount": 1,
+        "interimChars": 8,
+        "finalCount": 0,
+        "finalChars": 0,
+        "averageConfidence": null
+      },
+      {
+        "elapsedMs": 1820,
+        "resultIndex": 0,
+        "resultTotal": 1,
+        "interimCount": 0,
+        "interimChars": 0,
+        "finalCount": 1,
+        "finalChars": 15,
+        "averageConfidence": 0.91
+      }
+    ],
+    "renderSamples": [
+      {
+        "elapsedMs": 790,
+        "durationMs": 10.4,
+        "fullRender": false,
+        "segmentCount": 0,
+        "partialChars": 8
+      },
+      {
+        "elapsedMs": 1840,
+        "durationMs": 13.2,
+        "fullRender": false,
+        "segmentCount": 1,
+        "partialChars": 0
+      },
+      {
+        "elapsedMs": 60500,
+        "durationMs": 18.6,
+        "fullRender": false,
+        "segmentCount": 4,
+        "partialChars": 0
+      }
+    ],
+    "errors": []
+  }
+}

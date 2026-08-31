@@ -1,0 +1,228 @@
+{
+  "schemaVersion": "gne-eval-v1",
+  "exportedAt": "2026-07-05T08:35:00.000Z",
+  "appVersion": "20260705-huawei1",
+  "support": {
+    "hasSpeechRecognition": true,
+    "isSecureContext": true,
+    "isWeChat": false,
+    "isHuaweiBrowser": false,
+    "isHarmonyOS": false
+  },
+  "sourceLanguage": "zh-CN",
+  "targetLanguage": "zh-CN",
+  "session": {
+    "id": "fixture-distance-noise",
+    "startedAt": "2026-07-05T08:30:00.000Z",
+    "durationMs": 300000,
+    "durationText": "5 分钟",
+    "segmentCount": 5,
+    "finalChars": 126,
+    "partialChars": 0
+  },
+  "summary": {
+    "durationMs": 300000,
+    "recognitionStartCount": 1,
+    "recognitionRestartCount": 0,
+    "recognitionEndCount": 1,
+    "audioEventCount": 3,
+    "microphoneProbeCount": 1,
+    "errorCount": 0,
+    "resultEventCount": 12,
+    "interimEventCount": 7,
+    "finalResultCount": 5,
+    "timeToFirstResultMs": 1260,
+    "timeToFirstFinalMs": 2860,
+    "averageConfidence": 0.8,
+    "renderAverageMs": 24.8,
+    "renderP95Ms": 42.5,
+    "renderMaxMs": 45.1,
+    "windows": [
+      {
+        "index": 0,
+        "startMs": 0,
+        "endMs": 60000,
+        "resultEventCount": 3,
+        "interimEventCount": 2,
+        "finalResultCount": 1,
+        "averageConfidence": 0.82,
+        "renderAverageMs": 20.8,
+        "renderP95Ms": 30.2,
+        "renderMaxMs": 31.4
+      },
+      {
+        "index": 1,
+        "startMs": 60000,
+        "endMs": 120000,
+        "resultEventCount": 3,
+        "interimEventCount": 2,
+        "finalResultCount": 1,
+        "averageConfidence": 0.81,
+        "renderAverageMs": 23.4,
+        "renderP95Ms": 34.0,
+        "renderMaxMs": 35.1
+      },
+      {
+        "index": 2,
+        "startMs": 120000,
+        "endMs": 180000,
+        "resultEventCount": 2,
+        "interimEventCount": 1,
+        "finalResultCount": 1,
+        "averageConfidence": 0.8,
+        "renderAverageMs": 24.5,
+        "renderP95Ms": 38.2,
+        "renderMaxMs": 39.0
+      },
+      {
+        "index": 3,
+        "startMs": 180000,
+        "endMs": 240000,
+        "resultEventCount": 2,
+        "interimEventCount": 1,
+        "finalResultCount": 1,
+        "averageConfidence": 0.79,
+        "renderAverageMs": 26.0,
+        "renderP95Ms": 41.0,
+        "renderMaxMs": 42.4
+      },
+      {
+        "index": 4,
+        "startMs": 240000,
+        "endMs": 300000,
+        "resultEventCount": 2,
+        "interimEventCount": 1,
+        "finalResultCount": 1,
+        "averageConfidence": 0.78,
+        "renderAverageMs": 29.1,
+        "renderP95Ms": 45.0,
+        "renderMaxMs": 45.1
+      }
+    ]
+  },
+  "transcriptText": "现在做一段距离和轻微噪音测试。\n手机离说话人大约一米半，旁边可以播放很小声的背景音乐。\n请连续朗读这段文字，声音保持自然，不要刻意喊。\n我们要观察首字可见时间，最终字幕时间，结果事件数量和渲染耗时。\n如果后半段明显变慢，记录当时浏览器网络和电量状态。",
+  "partialText": "",
+  "segments": [
+    {
+      "index": 1,
+      "text": "现在做一段距离和轻微噪音测试。",
+      "confidence": 0.82,
+      "createdAt": "2026-07-05T08:30:03.000Z",
+      "sourceLanguage": "zh-CN"
+    },
+    {
+      "index": 2,
+      "text": "手机离说话人大约一米半，旁边可以播放很小声的背景音乐。",
+      "confidence": 0.81,
+      "createdAt": "2026-07-05T08:31:00.000Z",
+      "sourceLanguage": "zh-CN"
+    },
+    {
+      "index": 3,
+      "text": "请连续朗读这段文字，声音保持自然，不要刻意喊。",
+      "confidence": 0.8,
+      "createdAt": "2026-07-05T08:32:15.000Z",
+      "sourceLanguage": "zh-CN"
+    },
+    {
+      "index": 4,
+      "text": "我们要观察首字可见时间，最终字幕时间，结果事件数量和渲染耗时。",
+      "confidence": 0.79,
+      "createdAt": "2026-07-05T08:33:20.000Z",
+      "sourceLanguage": "zh-CN"
+    },
+    {
+      "index": 5,
+      "text": "如果后半段明显变慢，记录当时浏览器网络和电量状态。",
+      "confidence": 0.78,
+      "createdAt": "2026-07-05T08:34:48.000Z",
+      "sourceLanguage": "zh-CN"
+    }
+  ],
+  "diagnostics": {
+    "recognitionStarts": [
+      {
+        "elapsedMs": 140,
+        "language": "zh-CN"
+      }
+    ],
+    "recognitionEnds": [
+      {
+        "elapsedMs": 299600,
+        "reason": "stopped",
+        "listening": false,
+        "paused": false
+      }
+    ],
+    "audioEvents": [
+      {
+        "elapsedMs": 410,
+        "type": "audiostart"
+      },
+      {
+        "elapsedMs": 920,
+        "type": "soundstart"
+      },
+      {
+        "elapsedMs": 299100,
+        "type": "audioend"
+      }
+    ],
+    "microphoneProbes": [
+      {
+        "elapsedMs": 0,
+        "ok": true,
+        "durationMs": 2000,
+        "peak": 0.12,
+        "average": 0.05,
+        "detectedSound": true
+      }
+    ],
+    "resultEvents": [
+      {
+        "elapsedMs": 1260,
+        "resultIndex": 0,
+        "resultTotal": 1,
+        "interimCount": 1,
+        "interimChars": 11,
+        "finalCount": 0,
+        "finalChars": 0,
+        "averageConfidence": null
+      },
+      {
+        "elapsedMs": 2860,
+        "resultIndex": 0,
+        "resultTotal": 1,
+        "interimCount": 0,
+        "interimChars": 0,
+        "finalCount": 1,
+        "finalChars": 17,
+        "averageConfidence": 0.82
+      }
+    ],
+    "renderSamples": [
+      {
+        "elapsedMs": 1280,
+        "durationMs": 20.5,
+        "fullRender": false,
+        "segmentCount": 0,
+        "partialChars": 11
+      },
+      {
+        "elapsedMs": 2880,
+        "durationMs": 24.4,
+        "fullRender": false,
+        "segmentCount": 1,
+        "partialChars": 0
+      },
+      {
+        "elapsedMs": 250000,
+        "durationMs": 42.5,
+        "fullRender": false,
+        "segmentCount": 5,
+        "partialChars": 0
+      }
+    ],
+    "errors": []
+  }
+}

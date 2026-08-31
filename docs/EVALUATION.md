@@ -47,6 +47,12 @@
 
 ## 3. 测试方法
 
+### 测试内容 sub-agent
+
+已经新增一份专用 sub-agent 说明：`docs/agents/recognition-test-content-agent.md`。它负责生产固定测试内容、整理导出的评测 JSON、运行准确率脚本，并输出测试报告。
+
+仓库内也提供了 mock 夹具：`tests/fixtures/evaluation/`。这些夹具只用于验证评测流程是否跑通，不代表真实浏览器识别质量。
+
 ### 测试场景
 
 每次迭代至少跑三类场景：
@@ -70,6 +76,12 @@ npm run eval:transcript -- --reference reference.txt --hypothesis export.json
 ```
 
 其中 `reference.txt` 是人工准备的标准文本，`export.json` 是应用导出的评测数据。
+
+可先用内置夹具检查脚本：
+
+```bash
+npm run eval:transcript -- --reference tests/fixtures/evaluation/quiet-mandarin/reference.txt --hypothesis tests/fixtures/evaluation/quiet-mandarin/mock-export.json
+```
 
 ## 4. 版本验收线
 
