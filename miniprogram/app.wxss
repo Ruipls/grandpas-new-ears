@@ -1,0 +1,23 @@
+page {
+  height: 100%;
+  background: #eef4f2;
+  color: #17201d;
+  font-family: "PingFang SC", "Hiragino Sans GB", "Noto Sans SC", "Microsoft YaHei", sans-serif;
+}
+
+.page {
+  min-height: 100%;
+}
+
+button {
+  margin: 0;
+  padding: 0 24rpx;
+  line-height: 1.2;
+  border-radius: 16rpx;
+  font-weight: 700;
+  box-sizing: border-box;
+}
+
+button::after {
+  border: none;
+}

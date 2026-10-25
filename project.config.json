@@ -1,0 +1,46 @@
+{
+  "description": "爷爷的新耳朵测试版。用微信开发者工具打开本仓库根目录。请把 appid 改成你的小程序 AppID；没有 AppID 时保留 touristappid，只能看界面。说明见 docs/MINIPROGRAM.md。",
+  "packOptions": {
+    "ignore": [
+      {
+        "type": "file",
+        "value": "project.config.json"
+      }
+    ],
+    "include": []
+  },
+  "setting": {
+    "urlCheck": true,
+    "es6": true,
+    "enhance": true,
+    "postcss": true,
+    "minified": true,
+    "newFeature": true,
+    "coverView": true,
+    "nodeModules": false,
+    "autoAudits": false,
+    "showShadowRootInWxmlPanel": true,
+    "scopeDataCheck": false,
+    "uglifyFileName": false,
+    "checkInvalidKey": true,
+    "checkSiteMap": true,
+    "uploadWithSourceMap": true,
+    "babelSetting": {
+      "ignore": [],
+      "disablePlugins": [],
+      "outputPath": ""
+    },
+    "useIsolateContext": true,
+    "useCompilerModule": true,
+    "userConfirmedUseCompilerModuleSwitch": false
+  },
+  "compileType": "miniprogram",
+  "appid": "touristappid",
+  "projectname": "grandpas-new-ears",
+  "miniprogramRoot": "miniprogram/",
+  "editorSetting": {
+    "tabIndent": "insertSpaces",
+    "tabSize": 2
+  },
+  "condition": {}
+}
