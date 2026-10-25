@@ -1,0 +1,100 @@
+<view class="page contrast-{{contrast}} font-{{fontScale}}">
+  <view class="status-bar" aria-role="text" aria-label="{{statusLabel}}。{{statusDetail}}">
+    <view class="status-pill state-{{statusState}}">
+      <view class="status-dot" aria-hidden="true"></view>
+      <text class="status-label">{{statusLabel}}</text>
+    </view>
+    <text class="status-detail">{{statusDetail}}</text>
+  </view>
+
+  <scroll-view
+    class="caption-stage"
+    scroll-y
+    scroll-into-view="{{anchor}}"
+    scroll-with-animation="{{false}}"
+  >
+    <view class="empty" wx:if="{{!segments.length && !partialText}}">
+      <text class="empty-title">准备好了</text>
+      <text class="empty-hint">把手机放在说话的人旁边，点下面的「开始」。</text>
+    </view>
+
+    <view class="segment" wx:for="{{segments}}" wx:key="id" id="seg-{{index}}">
+      <text class="segment-meta">{{index + 1}} · {{item.clock}}</text>
+      <text class="segment-text" selectable>{{item.text}}</text>
+    </view>
+
+    <view class="partial" wx:if="{{partialText}}" id="partial">
+      <text class="partial-label">正在说</text>
+      <text class="partial-text" selectable>{{partialText}}</text>
+    </view>
+    <view id="caption-end" class="caption-end"></view>
+  </scroll-view>
+
+  <view class="dock">
+    <view class="primary-controls">
+      <button
+        class="main-action"
+        hover-class="pressed"
+        disabled="{{stopping || (listening && !paused)}}"
+        bindtap="onStart"
+      >{{paused || (sessionActive && !listening) ? '继续' : '开始'}}</button>
+      <button
+        class="side-action"
+        hover-class="pressed"
+        disabled="{{stopping || !listening || paused}}"
+        bindtap="onPause"
+      >暂停</button>
+      <button
+        class="side-action"
+        hover-class="pressed"
+        disabled="{{stopping || !sessionActive}}"
+        bindtap="onStop"
+      >结束</button>
+    </view>
+  </view>
+
+  <view class="settings">
+    <view class="setting-block">
+      <text class="setting-label">讲话语言</text>
+      <view class="choice-row">
+        <button
+          wx:for="{{languages}}"
+          wx:key="id"
+          class="choice {{sourceLanguage === item.id ? 'choice-on' : ''}}"
+          hover-class="pressed"
+          data-lang="{{item.id}}"
+          disabled="{{stopping}}"
+          bindtap="onPickLanguage"
+        >{{item.label}}</button>
+      </view>
+    </view>
+
+    <view class="setting-block">
+      <text class="setting-label">字号</text>
+      <view class="choice-row">
+        <button
+          wx:for="{{fonts}}"
+          wx:key="id"
+          class="choice {{fontScale === item.id ? 'choice-on' : ''}}"
+          hover-class="pressed"
+          data-font="{{item.id}}"
+          disabled="{{stopping}}"
+          bindtap="onPickFont"
+        >{{item.label}}</button>
+        <button
+          class="choice {{contrast === 'high' ? 'choice-on' : ''}}"
+          hover-class="pressed"
+          disabled="{{stopping}}"
+          bindtap="onToggleContrast"
+        >{{contrast === 'high' ? '高对比已开' : '高对比'}}</button>
+      </view>
+    </view>
+
+    <button class="text-action" hover-class="pressed" disabled="{{stopping}}" bindtap="onOpenHistory">已保存的对话</button>
+
+    <button wx:if="{{micDenied}}" class="help-action" hover-class="pressed" bindtap="onOpenSetting">去打开设置</button>
+    <button wx:if="{{privacyNeeded}}" class="help-action" hover-class="pressed" bindtap="onReviewPrivacy">查看隐私说明</button>
+
+    <text class="privacy-note">点「开始」后才会使用麦克风。对话默认不保存，结束时会问你。</text>
+  </view>
+</view>

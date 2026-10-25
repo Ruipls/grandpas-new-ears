@@ -1,0 +1,9 @@
+{
+  "desc": "测试版不开放收录",
+  "rules": [
+    {
+      "action": "disallow",
+      "page": "*"
+    }
+  ]
+}

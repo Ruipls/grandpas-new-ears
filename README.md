@@ -30,6 +30,8 @@ Grandpa's New Ears 是一款面向听障人士、听力下降老人及其家人�
 
 翻译界面已经预留，真实翻译接口将在后端服务接入后启用。
 
+微信里试用的测试版在 `miniprogram/`，不改动上面的网页原型。打开方式、真机预览和隐私设置见 [微信小程序说明](docs/MINIPROGRAM.md)。
+
 ## 在线测试
 
 GitHub Pages：
@@ -78,3 +80,4 @@ npm run build
 - [项目路线图](docs/ROADMAP.md)
 - [第一版实现说明](docs/V1_IMPLEMENTATION.md)
 - [部署与可达性说明](docs/DEPLOYMENT.md)
+- [微信小程序测试版](docs/MINIPROGRAM.md)

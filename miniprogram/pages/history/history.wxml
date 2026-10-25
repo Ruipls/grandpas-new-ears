@@ -1,0 +1,13 @@
+<view class="page contrast-{{contrast}}">
+  <text class="intro">这些记录只在这台手机上。换手机，或删除小程序，记录就没有了。</text>
+
+  <view wx:if="{{!items.length}}" class="empty">还没有保存的对话</view>
+
+  <view class="card" wx:for="{{items}}" wx:key="id">
+    <text class="meta">{{item.when}} · {{item.languageLabel}} · {{item.durationText}}</text>
+    <text class="body" selectable>{{item.preview}}</text>
+    <button class="delete" hover-class="pressed" data-id="{{item.id}}" bindtap="onDelete">删除这条</button>
+  </view>
+
+  <button class="clear" hover-class="pressed" disabled="{{!items.length}}" bindtap="onClear">清空全部</button>
+</view>
