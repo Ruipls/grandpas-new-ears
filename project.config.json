@@ -1,5 +1,5 @@
 {
-  "description": "爷爷的新耳朵测试版。用微信开发者工具打开本仓库根目录。请把 appid 改成你的小程序 AppID；没有 AppID 时保留 touristappid，只能看界面。说明见 docs/MINIPROGRAM.md。",
+  "description": "爷爷的新耳朵测试版。用微信开发者工具打开本仓库根目录。AppID 在工具的详情里手选，不要把真实 AppID 写回这个文件；保留 touristappid。说明见 docs/MINIPROGRAM.md。",
   "packOptions": {
     "ignore": [
       {

@@ -33,15 +33,25 @@
   <view class="dock">
     <view class="primary-controls">
       <button
+        wx:if="{{privacyNeeded}}"
+        id="agree-privacy-btn"
         class="main-action"
         hover-class="pressed"
-        disabled="{{stopping || (listening && !paused)}}"
+        open-type="agreePrivacyAuthorization"
+        bindagreeprivacyauthorization="onAgreePrivacy"
+        disabled="{{stopping || opening || (listening && !paused)}}"
+      >同意并开始</button>
+      <button
+        wx:else
+        class="main-action"
+        hover-class="pressed"
+        disabled="{{stopping || opening || (listening && !paused)}}"
         bindtap="onStart"
       >{{paused || (sessionActive && !listening) ? '继续' : '开始'}}</button>
       <button
         class="side-action"
         hover-class="pressed"
-        disabled="{{stopping || !listening || paused}}"
+        disabled="{{stopping || paused || (!listening && !opening)}}"
         bindtap="onPause"
       >暂停</button>
       <button
@@ -93,7 +103,8 @@
     <button class="text-action" hover-class="pressed" disabled="{{stopping}}" bindtap="onOpenHistory">已保存的对话</button>
 
     <button wx:if="{{micDenied}}" class="help-action" hover-class="pressed" bindtap="onOpenSetting">去打开设置</button>
-    <button wx:if="{{privacyNeeded}}" class="help-action" hover-class="pressed" bindtap="onReviewPrivacy">查看隐私说明</button>
+    <button wx:if="{{privacyNeeded || privacyBlocked}}" class="help-action" hover-class="pressed" bindtap="onOpenContract">查看隐私保护指引</button>
+    <button wx:if="{{privacyNeeded}}" class="text-action" hover-class="pressed" bindtap="onDeclinePrivacy">暂不同意</button>
 
     <text class="privacy-note">点「开始」后才会使用麦克风。对话默认不保存，结束时会问你。</text>
   </view>

@@ -11,9 +11,14 @@ const { createWechatSIEngine } = require("./wechat-si");
  * onInterim(handler)  handler(text)
  * onFinal(handler)    handler(text)
  * onError(handler)    handler({ code, retcode, message })
+ * onStarted(handler)  handler()
+ *   Fires only after the provider reports that recording has started.
+ *   start() resolving is not the same thing.
+ * onPending(handler)  handler()
+ *   A retry is about to begin. The page must not keep showing 正在听.
  *
  * error.code:
- *   "network" | "mic" | "interrupted" | "unavailable" | "limited" | "failed"
+ *   "network" | "timeout" | "transmission" | "mic" | "interrupted" | "unavailable" | "limited" | "failed" | "start-timeout"
  *
  * Pages should import only createSpeechEngine(). A later cloud recognizer
  * (讯飞 / 阿里云 / 腾讯云, with a small token backend) can replace the body

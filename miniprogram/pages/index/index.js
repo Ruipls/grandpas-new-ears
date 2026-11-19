@@ -9,12 +9,18 @@ const {
   formatClock,
   formatDuration,
   createId,
-  normalizeCaption
+  commitCaption
 } = require("../../utils/format");
 const { applyNavigationTheme } = require("../../utils/theme");
-const { ensurePrivacyAuthorize, ensureRecordPermission } = require("../../utils/permission");
-
-const LEAVE_HINT = "锁屏或离开后已停止收音，请再点开始。";
+const { createAccessGate } = require("../../utils/access-flow");
+const { assessRuntime } = require("../../utils/readiness");
+const {
+  queryPrivacy,
+  queryRecord,
+  requestRecordAuthorize,
+  openRecordSettings,
+  openPrivacyContract
+} = require("../../utils/permission");
 
 Page({
   data: {
@@ -31,24 +37,40 @@ Page({
     anchor: "",
     listening: false,
     paused: false,
+    opening: false,
     sessionActive: false,
     stopping: false,
     micDenied: false,
-    privacyNeeded: false
+    privacyNeeded: false,
+    privacyBlocked: false
   },
 
   onLoad() {
+    if (this._booted) return;
+    this._booted = true;
     const settings = loadSettings();
     this.sessionStartedAt = null;
     this.segments = [];
     this._unloaded = false;
     this._stopPromise = null;
-    this._startLock = false;
     this._interimTimer = null;
     this._pendingInterim = "";
     this.engine = createSpeechEngine();
+    this.gate = createAccessGate({
+      onStatus: (copy) => this.applyCopy(copy),
+      onView: (patch) => {
+        if (!this._unloaded) this.setData(patch);
+      },
+      onPhase: (phase) => this.applyPhase(phase),
+      onRequestAuthorize: () => this.requestAuthorize(),
+      onStartEngine: () => this.beginEngine(),
+      onStopEngine: () => this.stopEngine()
+    });
+    this.gate.setCanAuthorize(typeof wx.authorize === "function");
     this.bindEngine();
-    this._appHide = () => this.pauseForLeave();
+    this._appHide = () => {
+      if (this.gate) this.gate.setVisible(false);
+    };
     if (wx.onAppHide) wx.onAppHide(this._appHide);
     this.setData({
       sourceLanguage: settings.sourceLanguage,
@@ -59,11 +81,13 @@ Page({
   },
 
   onShow() {
+    if (this.gate) this.gate.setVisible(true);
+    this.refreshAccess();
     applyNavigationTheme(this.data.contrast);
   },
 
   onHide() {
-    this.pauseForLeave();
+    if (this.gate) this.gate.setVisible(false);
   },
 
   onUnload() {
@@ -89,83 +113,142 @@ Page({
       }, 120);
     });
 
-    this.engine.onFinal((text) => {
-      if (this._unloaded) return;
+    this.engine.onFinal((text, meta) => {
+      if (this._unloaded || this._closedSession) return;
+      this._provisional = Boolean(meta && meta.provisional);
       this.appendSegment(text);
+    });
+
+    this.engine.onRevise((text) => {
+      if (this._unloaded || this._closedSession) return;
+      this.replaceProvisional(text);
     });
 
     this.engine.onError((error) => {
       if (this._unloaded) return;
       this.showEngineError(error);
     });
-  },
 
-  async onStart() {
-    if (this._startLock || this.data.stopping) return;
-    if (this.data.listening && !this.data.paused) return;
-    this._startLock = true;
-    try {
-      if (this._stopPromise) await this._stopPromise;
-      try {
-        await ensurePrivacyAuthorize();
-        await ensureRecordPermission();
-      } catch (error) {
-        this.handlePermissionError(error);
-        return;
-      }
-
-      if (!this.sessionStartedAt) {
-        this.sessionStartedAt = new Date();
-        this.segments = [];
-        this.setData({
-          sessionActive: true,
-          segments: [],
-          partialText: ""
-        });
-      }
-
+    this.engine.onStarted(() => {
+      if (this._unloaded || !this.gate) return;
+      if (!this.gate.recordingStarted()) return;
       this.setData({
         listening: true,
+        opening: false,
         paused: false,
         micDenied: false,
-        privacyNeeded: false
+        privacyNeeded: false,
+        privacyBlocked: false
       });
       this.setKeepScreen(true);
       this.setStatus("listening", "正在听", languageLabel(this.data.sourceLanguage));
+    });
 
-      try {
-        await this.engine.start({ lang: this.data.sourceLanguage });
-      } catch (error) {
-        this.showEngineError(error);
-        if (!this.segments.length) {
-          this.sessionStartedAt = null;
-          this.setData({
-            sessionActive: false,
-            listening: false,
-            paused: false
-          });
-        }
+    this.engine.onPending((reason) => {
+      if (this._unloaded || this.data.paused || this.data.stopping || this._closedSession) return;
+      this.setData({ listening: false, opening: true });
+      this.setKeepScreen(true);
+      if (reason === "retry") {
+        this.setStatus("pending", "正在重新连接", "刚才中断了，正在再试一次。现在没有在听。");
+        return;
       }
-    } finally {
-      this._startLock = false;
+      this.setStatus("pending", "正在接上", "上一小段已经结束。下一小段要等录音真正开始，才会显示正在听。");
+    });
+  },
+
+  refreshAccess() {
+    return Promise.all([queryPrivacy(wx), queryRecord(wx)]).then((results) => {
+      if (this._unloaded || !this.gate) return;
+      const privacy = results[0];
+      const record = results[1];
+      this.gate.noteQuery({
+        privacyKnown: privacy.privacyKnown,
+        privacyFailed: privacy.failed === true,
+        needPrivacy: privacy.needPrivacy,
+        recordKnown: record.recordKnown,
+        recordGranted: record.recordGranted,
+        canAuthorize: typeof wx.authorize === "function"
+      });
+    });
+  },
+
+  requestAuthorize() {
+    requestRecordAuthorize(wx, {
+      success: () => {
+        if (this._unloaded || !this.gate) return;
+        this.gate.authorizeFinished(null, true);
+      },
+      fail: (error) => {
+        queryRecord(wx).then((record) => {
+          if (this._unloaded || !this.gate) return;
+          this.gate.authorizeFinished(error, record.recordGranted);
+        });
+      }
+    });
+  },
+
+  allowStart() {
+    const ready = assessRuntime(wx);
+    if (ready.ok) return true;
+    this.setStatus(ready.state, ready.label, ready.detail);
+    return false;
+  },
+
+  onStart() {
+    if (!this.gate || !this.allowStart()) return;
+    if (!this.gate.shouldRecheckPrivacy()) {
+      this.gate.userStart();
+      return;
+    }
+    this.refreshAccess().then(() => {
+      if (this._unloaded || !this.gate || !this.allowStart()) return;
+      this.gate.userStart();
+    });
+  },
+
+  onAgreePrivacy() {
+    if (!this.gate || !this.allowStart()) return;
+    this.gate.agree();
+  },
+
+  onDeclinePrivacy() {
+    if (!this.gate) return;
+    this.gate.declinePrivacy();
+  },
+
+  async beginEngine() {
+    if (this._stopPromise) await this._stopPromise;
+    if (this._unloaded || !this.gate || !this.gate.isOpening()) return;
+    this._closedSession = false;
+    if (!this.sessionStartedAt) {
+      this.sessionStartedAt = new Date();
+      this.segments = [];
+      this.setData({
+        sessionActive: true,
+        segments: [],
+        partialText: ""
+      });
+    }
+    try {
+      await this.engine.start({ lang: this.data.sourceLanguage });
+    } catch (error) {
+      if (this._unloaded) return;
+      if (!this.segments.length) {
+        this.sessionStartedAt = null;
+        this.setData({ sessionActive: false });
+      }
+      this.showEngineError(error);
     }
   },
 
   onPause() {
-    if (this.data.stopping || !this.data.listening || this.data.paused) return;
-    this.setData({ paused: true });
-    this.setKeepScreen(false);
-    this.setStatus("paused", "已暂停", "点「继续」接着听。");
-    this.stopEngine();
+    if (!this.gate || this.data.stopping) return;
+    this.gate.pause("user");
   },
 
   async onStop() {
     if (this.data.stopping || !this.data.sessionActive) return;
-    this.setData({
-      stopping: true,
-      listening: false,
-      paused: false
-    });
+    if (this.gate) this.gate.markStopping();
     this.setKeepScreen(false);
     await this.stopEngine();
 
@@ -202,8 +285,6 @@ Page({
       if (this._unloaded || !this.data.listening || this.data.paused) return;
       return this.engine.start({ lang: lang });
     }).catch((error) => {
-      this.setData({ listening: false, paused: false });
-      this.setKeepScreen(false);
       this.showEngineError(error);
     });
   },
@@ -228,31 +309,65 @@ Page({
   },
 
   onOpenSetting() {
-    wx.openSetting({
-      success: (res) => {
-        const allowed = res && res.authSetting && res.authSetting["scope.record"] === true;
-        if (!allowed) return;
-        this.setData({ micDenied: false });
-        this.setStatus("idle", "待机", "麦克风已允许，请点开始。");
-      }
+    openRecordSettings(wx).then((result) => {
+      if (this._unloaded || !this.gate) return;
+      this.gate.settingsFinished(result);
     });
   },
 
-  onReviewPrivacy() {
-    if (wx.openPrivacyContract) wx.openPrivacyContract({});
-    ensurePrivacyAuthorize().then(() => {
-      if (this._unloaded) return;
-      this.setData({ privacyNeeded: false });
-      this.setStatus("idle", "待机", "已同意隐私说明，请点开始。");
-    }).catch(() => {});
+  onOpenContract() {
+    openPrivacyContract(wx).then((result) => {
+      if (this._unloaded || !this.gate || result.opened) return;
+      this.gate.contractFailed();
+    });
   },
 
-  pauseForLeave() {
-    if (this._unloaded || !this.data.listening || this.data.paused) return;
-    this.setData({ paused: true });
+  applyCopy(copy) {
+    if (!copy) return;
+    this.setStatus(copy.state, copy.label, copy.detail);
+  },
+
+  applyPhase(phase) {
+    if (this._unloaded) return;
+    if (phase === "opening") {
+      this.setData({ opening: true, listening: false, paused: false });
+      this.setKeepScreen(true);
+      return;
+    }
+    if (phase === "listening") {
+      this.setData({
+        opening: false,
+        listening: true,
+        paused: false,
+        micDenied: false,
+        privacyNeeded: false,
+        privacyBlocked: false
+      });
+      this.setKeepScreen(true);
+      return;
+    }
+    if (phase === "paused") {
+      this.setData({ opening: false, listening: false, paused: true });
+      this.setKeepScreen(false);
+      return;
+    }
+    if (phase === "stopping") {
+      this.setData({
+        opening: false,
+        listening: false,
+        paused: false,
+        stopping: true
+      });
+      this.setKeepScreen(false);
+      return;
+    }
+    this.setData({
+      opening: false,
+      listening: false,
+      paused: false,
+      stopping: false
+    });
     this.setKeepScreen(false);
-    this.setStatus("paused", "已暂停", LEAVE_HINT);
-    this.stopEngine();
   },
 
   stopEngine() {
@@ -273,13 +388,9 @@ Page({
       clearTimeout(this._interimTimer);
       this._interimTimer = null;
     }
-    const clean = normalizeCaption(text);
-    if (!clean) {
-      this.setData({ partialText: "" });
-      return;
-    }
     const previous = this.segments[this.segments.length - 1];
-    if (previous && previous.text === clean) {
+    const clean = commitCaption(previous && previous.text, text);
+    if (!clean) {
       this.setData({ partialText: "" });
       return;
     }
@@ -294,6 +405,31 @@ Page({
       segments: this.segments,
       partialText: ""
     }, () => this.scrollToEnd());
+  },
+
+  replaceProvisional(text) {
+    if (this._interimTimer) {
+      clearTimeout(this._interimTimer);
+      this._interimTimer = null;
+    }
+    const clean = commitCaption("", text);
+    if (!clean) {
+      this.setData({ partialText: "" });
+      return;
+    }
+    const last = this.segments[this.segments.length - 1];
+    if (this._provisional && last) {
+      last.text = clean;
+      this._provisional = false;
+      this.segments = this.segments.slice();
+      this.setData({
+        segments: this.segments,
+        partialText: ""
+      }, () => this.scrollToEnd());
+      return;
+    }
+    this._provisional = false;
+    this.appendSegment(clean);
   },
 
   saveCurrentSession() {
@@ -316,11 +452,15 @@ Page({
     this.sessionStartedAt = null;
     this.segments = [];
     this._pendingInterim = "";
+    this._provisional = false;
+    this._closedSession = true;
+    if (this.gate) this.gate.reset();
     this.setKeepScreen(false);
     this.setData({
       sessionActive: false,
       listening: false,
       paused: false,
+      opening: false,
       stopping: false,
       segments: [],
       partialText: "",
@@ -339,32 +479,36 @@ Page({
     return settings;
   },
 
-  handlePermissionError(error) {
-    if (error && error.code === "privacy") {
-      this.setData({ privacyNeeded: true, micDenied: false });
-      this.setStatus("error", "请先同意", "需要同意隐私保护指引，才能使用麦克风。");
-      return;
-    }
-    this.setData({ micDenied: true, privacyNeeded: false });
-    this.setStatus("error", "麦克风未授权", "请打开设置，允许使用麦克风，然后回来再点开始。");
-  },
-
   showEngineError(error) {
     const code = error && error.code;
     this.setKeepScreen(false);
+    if (this.gate) this.gate.failEngine(code);
     if (code === "interrupted") {
-      this.setData({ listening: false, paused: true });
       this.setStatus("paused", "已暂停", "收音被打断了。请再点开始。");
       return;
     }
-    this.setData({ listening: false, paused: false });
     if (code === "network") {
-      this.setStatus("error", "网络异常", "请检查网络后，再点开始。");
+      this.setStatus("error", "网络异常", "请检查网络后，再点开始。现在没有在听。");
+      return;
+    }
+    if (code === "timeout") {
+      this.setStatus("error", "识别超时", "这次没有在限定时间内听完。请再点开始。现在没有在听。");
+      return;
+    }
+    if (code === "transmission") {
+      this.setStatus("error", "没有听完整", "刚才的声音没有传完。请再点开始。现在没有在听。");
+      return;
+    }
+    if (code === "start-timeout") {
+      this.setStatus("error", "没有开始听", "录音没有开始。请再点一次。如果总是这样，请让家人确认插件和隐私指引。");
+      return;
+    }
+    if (code === "no-result") {
+      this.setStatus("error", "没有收到结果", "刚才已经在听，但这几秒没有收到正式结果，所以停了。请再点开始。现在没有在听。");
       return;
     }
     if (code === "mic") {
-      this.setData({ micDenied: true });
-      this.setStatus("error", "麦克风未授权", "请打开设置，允许使用麦克风。如果已经允许，请看看麦克风是否被别的应用占用。");
+      this.setStatus("error", "录音出错", "录音接口出错。这不一定是没授权。请再点开始。如果之前点过拒绝，再去设置里打开麦克风。现在没有在听。");
       return;
     }
     if (code === "limited") {
@@ -372,7 +516,7 @@ Page({
       return;
     }
     if (code === "unavailable") {
-      this.setStatus("error", "暂不可用", "语音识别还没准备好。请让家人按说明检查小程序设置。");
+      this.setStatus("error", "暂不可用", "语音识别还没准备好。请让家人按说明检查小程序插件和基础库。");
       return;
     }
     this.setStatus("error", "识别失败", "这次没有听成。请再点开始试一次。");
