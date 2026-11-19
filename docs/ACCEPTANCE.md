@@ -15,9 +15,15 @@ npm run pack:miniprogram
 
 - `scripts/check-miniprogram.mjs`
 - `scripts/check-contract.mjs`
-- `scripts/independent-harness.mjs`
+- `scripts/check-timing.mjs`
 
-独立探针的插件是被动的：`start` / `stop` 只记次数，回调只在测试自己发出时才到。成功时计数里没有 `FAIL`。它不是微信开发者工具，也不是手机。
+另外单独跑原独立探针，不把它的失败改成通过：
+
+```bash
+node scripts/independent-harness.mjs
+```
+
+这个文件的断言和独立验收附来的探针一致。其中两条会失败，原因写在下面，不是把定时器改成 29999 毫秒去躲开。
 
 ## 这一轮对着独立探针修过的点
 
@@ -27,7 +33,7 @@ npm run pack:miniprogram
 | 一段的 `onStop` 到下一次 `onStart` 之间仍显示正在听 | 这段结束就离开「正在听」，显示「正在接上」，直到下一次 `onStart` | NOT RUN |
 | 还没 `onStart` 就收到 `onStop`，每 300 毫秒无限 `start` | 这种未确认开始的结束最多再试一次，然后停止并提示失败，不再连续开录音 | NOT RUN |
 | 续段空档里第二个带结果的 `onStop` 被忽略 | 下一次 `start` 之前又来的 `onStop.result` 仍算上一小段的正式字幕，另成一句。插件没有 session id，所以只按「这一次有没有收到 onStart、用户是否还要继续听」区分，不用世代号假装两段录音已经隔离 | NOT RUN |
-| 文档写每 30 秒主动收段，代码只传 `duration: 30000` | 传给插件的 duration 仍是 30000，官方会到时自己停。若还没有 `onStop`，客户端在满 30 秒前 1 毫秒再调用一次 `stop`，只要这一段结果，不在未知状态下连续开新录音。探针在 `onStart` 之后不允许还挂着一个大于等于 30000 毫秒的定时器，所以兜底比 duration 早 1 毫秒 | NOT RUN |
+| 文档写每 30 秒主动收段，代码只传 `duration: 30000` | 传给插件的 duration 仍是 30000，官方到时会自己停。客户端再等 2000 毫秒；还没有 `onStop` 才 `stop` 一次，然后再等最多 8000 毫秒。仍然没有就结束，不再 `start`。原探针 `onStart-then-listening` 和 `no-client-stop-at-30s` 因此仍是 FAIL，见下节。定时测试是 `scripts/check-timing.mjs` | NOT RUN |
 | `-30001` 被写成麦克风未授权 | 官方说明是「录音接口出错」。页面标题是「录音出错」，不把它当成已经拒绝 `scope.record` | NOT RUN |
 | `getPrivacySetting` 失败后仍去 `wx.authorize` | 查询失败就停住，提示暂时确认不了隐私授权，不把它当成已经同意，也不申请麦克风。再点开始可以再查 | NOT RUN |
 
@@ -67,7 +73,23 @@ npm run pack:miniprogram
 
 `scripts/check-miniprogram.mjs` 另外检查工程形状、30 秒续听、暂停不自动再开、授权门的同意/拒绝/设置返回。它的输出是 `assertions passed` 和 `access gate simulation ok (not a phone test)`。这些同样不是真机。
 
-`scripts/check-contract.mjs` 里的插件 `stop()` 会同步发出 `onStop`。这盖不住「停了以后很久才回调」的问题。那一类时序以 `scripts/independent-harness.mjs` 为准：回调只有测试发出时才到。
+`scripts/check-timing.mjs` 用另一套被动定时器检查段时长：满 30000 毫秒还不 `stop`；到 32000 毫秒只 `stop` 一次；再过 8000 毫秒仍没有 `onStop` 就结束并且不再 `start`；迟到的 `onStop` 收下且不新开一段；暂停、隐藏、卸载取消兜底；`onStop` 到下一次 `onStart` 之前不显示正在听。
+
+`scripts/independent-harness.mjs` 保持原断言。它现在预期有 2 个 FAIL：
+
+- `onStart-then-listening` 要求 `onStart` 之后不能有大于等于 30000 毫秒的定时器。合法兜底必须至少等到插件自己的 duration，所以会看到 32000。
+- `no-client-stop-at-30s` 在正好 30000 毫秒时如果还没调用 `stop` 且仍显示正在听，就判失败。那时插件理应自己停并回调 `onStop`；客户端再留 2000 毫秒给这个回调，所以这一刻还在听，定时器还剩 2000 毫秒。
+
+这两条没有改成 PASS。其余原探针结果仍要看当次输出。
+
+## 没有 session id 时的边界
+
+插件管理器是全局一个，`onStop` 不带段号。代码只记得「这次 `start` 之后有没有收到 `onStart`」以及「用户是否还要继续听」。因此：
+
+- 下一次 `start` 之前又来的 `onStop.result`，当成上一小段的正式结果。
+- 下一次已经 `start` 但还没有 `onStart` 时来的 `onStop`，分不清是上一小段迟到，还是新的一次没开始就结束。非空结果会收下，空结果计入有限失败，不会无限再 `start`。
+- 下一次 `onStart` 之后的 `onStop`，当成新的一小段。
+- 这不是彻底隔离。两个回调如果叠在「已 start、未 onStart」这段里，不能保证每个字都属于哪一次开口。
 
 ## 模拟边界
 
@@ -78,7 +100,7 @@ npm run pack:miniprogram
 - `onRecognize` 的 `result` 是这一段正在说的文字。2026-08-24 的中文方法表没有这个回调。代码仍监听它；真机没有时，正式字幕仍来自 `onStop`。
 - 网络、超时、传输出错各自动再试一次。文档只给了错误码，没有要求重试。没有收到 `onStart` 就结束的情况也只再试一次，然后停止。
 - `onStart` 超过 8 秒还不来，就停止并显示「没有开始听」。文档没有这个时限。官方的识别超时是 `-30006`。
-- 客户端在插件 duration 前 1 毫秒调用一次 `stop`，只为在满 30 秒时如果还没有 `onStop` 就停下来要结果。插件参数仍是 30000。这 1 毫秒不是官方时限。
+- 段时长兜底是 duration 30000 毫秒后再等 2000 毫秒，然后只 `stop` 一次；再等 8000 毫秒还没有 `onStop` 就结束并且不再 `start`。2000 和 8000 都不是官方时限。
 - `touristappid` 是开发者工具和本仓库的占位。`wx.getAccountInfoSync` 文档只说 `appId` 是字符串，没有把它列为枚举。读不到账号信息时不单靠这一条拦截，插件不可用仍会拦截。
 - 30 秒主动分段是为了避开社区里「大约 40 秒没有 `onStop`」的报告。官方单次上限仍是 60000 毫秒。
 

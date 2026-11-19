@@ -8,6 +8,14 @@ const DEFAULT_STOP_TIMEOUT_MS = 1600;
 // take. This only fires when that callback never arrives; it is not an official
 // recognition timeout (-30006 is that official code).
 const DEFAULT_START_WAIT_MS = 8000;
+// The plugin stops itself when `duration` is reached and should then call
+// onStop. The document does not say that callback is immediate, so the client
+// waits this long after `duration` before calling stop() once. 2000ms is our
+// assumption, not an official timeout.
+const DEFAULT_SEGMENT_GRACE_MS = 2000;
+// After that single stop(), wait at most this long for onStop. Then end the
+// session and do not start again. Same bound as the missing-onStart wait.
+const DEFAULT_STOP_CONFIRM_MS = 8000;
 
 function classifyWechatSIError(retcode) {
   const code = Number(retcode);
@@ -56,6 +64,8 @@ function createWechatSIEngine(options) {
   const restartDelay = settings.restartDelay == null ? DEFAULT_RESTART_DELAY_MS : settings.restartDelay;
   const stopTimeout = settings.stopTimeout == null ? DEFAULT_STOP_TIMEOUT_MS : settings.stopTimeout;
   const startWait = settings.startWait == null ? DEFAULT_START_WAIT_MS : settings.startWait;
+  const segmentGrace = settings.segmentGrace == null ? DEFAULT_SEGMENT_GRACE_MS : settings.segmentGrace;
+  const stopConfirm = settings.stopConfirm == null ? DEFAULT_STOP_CONFIRM_MS : settings.stopConfirm;
 
   const handlers = {
     interim() {},
@@ -89,6 +99,7 @@ function createWechatSIEngine(options) {
   let startTimer = null;
   let segmentTimer = null;
   let giveUpTimer = null;
+  let fallbackStopSent = false;
   let stopWaiter = null;
   const pendingBegins = [];
   const MAX_BLIND_STOPS = 1;
@@ -180,6 +191,7 @@ function createWechatSIEngine(options) {
       if (!active) return;
       awaitingStart = false;
       recording = true;
+      fallbackStopSent = false;
       blindStops = 0;
       armSegmentDeadline();
       handlers.started();
@@ -239,6 +251,7 @@ function createWechatSIEngine(options) {
       if (!active && stopSettled) return;
       clearStartTimer();
       clearSegmentTimer();
+      clearGiveUp();
       awaitingStart = false;
       recording = false;
       interim = "";
@@ -343,26 +356,32 @@ function createWechatSIEngine(options) {
     }, startWait);
   }
 
+  function requestFallbackStop() {
+    if (fallbackStopSent || !recording) return;
+    fallbackStopSent = true;
+    // stop() has been asked for, but onStop has not confirmed the end.
+    // Do not keep showing that this segment is still being recorded.
+    handlers.pending("continue");
+    try {
+      if (manager && typeof manager.stop === "function") manager.stop();
+    } catch (error) {
+      active = false;
+      emitError("failed", null);
+      return;
+    }
+    armGiveUp();
+  }
+
   function armSegmentDeadline() {
     clearSegmentTimer();
     const token = turnToken;
-    // The plugin is asked to auto-stop at `duration`. This fallback calls stop
-    // once if that onStop has not arrived. It is 1ms earlier so a check right
-    // after onStart does not see a timer still waiting the full duration, while
-    // advancing to the duration still runs the fallback. If onStop arrives
-    // first, the timer is cancelled.
-    const wait = Math.max(0, duration - 1);
+    // Wait until the plugin's own duration has passed, plus segmentGrace, so a
+    // normal onStop can arrive first. Only then call stop() once.
     segmentTimer = schedule(() => {
       segmentTimer = null;
       if (!active || token !== turnToken || !recording) return;
-      try {
-        if (manager && typeof manager.stop === "function") manager.stop();
-      } catch (error) {
-        active = false;
-        emitError("failed", null);
-      }
-      armGiveUp();
-    }, wait);
+      requestFallbackStop();
+    }, duration + segmentGrace);
   }
 
   function armGiveUp() {
@@ -370,8 +389,8 @@ function createWechatSIEngine(options) {
     const token = turnToken;
     giveUpTimer = schedule(() => {
       giveUpTimer = null;
-      if (token !== turnToken || stopSettled && !recording && !awaitingStart) return;
-      if (!recording && !awaitingStart && stopSettled) return;
+      if (token !== turnToken) return;
+      if (stopSettled && !recording && !awaitingStart) return;
       awaitingStart = false;
       recording = false;
       if (active) {
@@ -381,7 +400,7 @@ function createWechatSIEngine(options) {
       }
       finishStopWaiter();
       markStopSettled();
-    }, startWait);
+    }, stopConfirm);
   }
 
   function armStopTimeout() {
@@ -412,6 +431,7 @@ function createWechatSIEngine(options) {
       clearRestart();
       clearStartTimer();
       clearSegmentTimer();
+      clearGiveUp();
       if (!shouldStop) {
         markStopSettled();
         return Promise.resolve();
@@ -467,6 +487,8 @@ function createWechatSIEngine(options) {
 
 module.exports = {
   DEFAULT_DURATION_MS,
+  DEFAULT_SEGMENT_GRACE_MS,
+  DEFAULT_STOP_CONFIRM_MS,
   DEFAULT_START_WAIT_MS,
   classifyWechatSIError,
   createWechatSIEngine
