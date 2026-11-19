@@ -57,6 +57,13 @@ function normalizeCaption(text) {
   return String(text == null ? "" : text).replace(/\s+/g, " ").trim();
 }
 
+function commitCaption(previousText, text) {
+  const clean = normalizeCaption(text);
+  if (!clean) return "";
+  if (normalizeCaption(previousText) === clean) return "";
+  return clean;
+}
+
 module.exports = {
   LANGUAGES,
   FONT_SCALES,
@@ -67,5 +74,6 @@ module.exports = {
   formatStamp,
   formatDuration,
   createId,
-  normalizeCaption
+  normalizeCaption,
+  commitCaption
 };

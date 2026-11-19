@@ -157,7 +157,8 @@ npm run check
 
 - 识别要联网。没有离线识别。
 - 同声传译单次录音官方最长 60 秒。社区里有人把时长设成 60 秒或 45 秒，大约 40 秒就停住，并且没有 `onStop`。所以这版每 30 秒主动收一段，再立刻开始下一段。一句话可能在 30 秒边界被切开。若你的手机长到 60 秒仍稳定，可以再把 `miniprogram/engines/wechat-si.js` 里的 `DEFAULT_DURATION_MS` 调大，最大不要超过 60000。
-- 临时字幕依赖 `onRecognize`。见第 3 节的文档差异。
+- 错误码按 2026-08-24 的中文插件文档分类。`-30004/-30008/-30010` 是网络，`-30006` 是识别超时，`-30003` 是录音数据没传完，`-30011` 表示已经在听所以不再开始一次。文档没有要求自动重试；这版对网络、超时、传输出错各自动再试一次，第二次才提示。插件 `onStart` 一直不来时，8 秒后显示「没有开始听」。这 8 秒不是官方超时。
+- 临时字幕依赖 `onRecognize`。2026-08-24 的中文方法表没有这一项。见第 3 节。没有它时，正式字幕仍来自 `onStop`。
 - `start` 不能选择 Android 的 `audioSource`。插件用系统默认输入：一般是手机麦克风；系统把耳麦或 Type-C 麦当成耳机麦时，会自动改用那一个。这和微信录音接口里的 `auto` 一致。有的 USB 麦不会被当成耳机麦，手机就会继续用内置麦克风。请用你的领夹麦在真机上确认，不要只看模拟器。
 - 这版不会同时自己调用 `wx.getRecorderManager()`。那个录音器是全局唯一的，和插件抢会冲突。
 - 锁屏、切走、打开「已保存的对话」都会停止收音，并留下文字提示。回到前台不会自动接着听，避免手机在口袋里继续录。
@@ -170,7 +171,7 @@ npm run check
 ## 8. 建议的下一步
 
 1. 用真机把第 5 节走一遍，尤其是领夹麦、锁屏、拒绝麦克风、连续说一分钟。
-2. 若插件不能新添加，或 30 秒分段太碎，就换成云端流式识别（讯飞、阿里云或腾讯云）。字幕页面只认 `miniprogram/engines/index.js` 里的 `createSpeechEngine()`：`start`、`stop`、`onInterim`、`onFinal`、`onError`、`onStarted`。`onStarted` 要在录音真正开始之后调用，页面才显示「正在听」。换实现时改 `createSpeechEngine()` 即可。
+2. 若插件不能新添加，或 30 秒分段太碎，就换成云端流式识别（讯飞、阿里云或腾讯云）。字幕页面只认 `miniprogram/engines/index.js` 里的 `createSpeechEngine()`：`start`、`stop`、`onInterim`、`onFinal`、`onError`、`onStarted`、`onPending`。`onStarted` 要在录音真正开始之后调用，页面才显示「正在听」。`onPending` 表示正在重试，页面不能继续显示「正在听」。换实现时改 `createSpeechEngine()` 即可。
 3. 云端那一版需要一个很小的后端来发临时 token，不要把密钥放进小程序。录音可以自己用 `wx.getRecorderManager()`。Android 上优先试 `audioSource: "voice_recognition"`；基础库较新时也可以试 `audioMode: "voiceRecognition"`（和 `audioSource` 同时写时，微信文档说 `audioMode` 生效）。这一步仍不要和同声传译插件一起占用录音器。
 4. 需要翻译时，同声传译还有 `plugin.translate`（普通话、英语、粤语），也可以以后交给云端翻译。
 5. 找几位老人或家人看字号、按钮和「结束时问要不要保存」是否够清楚。
@@ -184,5 +185,22 @@ npm run check
 | `miniprogram/engines/index.js` | 识别引擎接口。以后换云端只改这里 |
 | `miniprogram/engines/wechat-si.js` | 同声传译实现，含 30 秒自动续听 |
 | `miniprogram/utils/` | 本机设置、历史、时间文字；`access-flow.js` 只判断隐私和麦克风状态，不调用微信；`permission.js` 才去调用授权接口 |
-| `project.config.json` | 用开发者工具打开仓库根目录 |
-| `miniprogram/project.config.json` | 用开发者工具打开 `miniprogram` 文件夹 |
+| `scripts/check-miniprogram.mjs` | 结构、识别引擎和授权门的模拟 |
+| `scripts/check-contract.mjs` | 按插件文档错误码和页面流程做的模拟，不是真机 |
+| `scripts/pack-miniprogram.mjs` | 打可导入的 zip，不打进 node_modules、.git、日志、音频和密钥 |
+| `docs/ACCEPTANCE.md` | 验收矩阵。PASS 只表示模拟或静态检查，真机列是 NOT RUN |
+| `project.config.json` | 用开发者工具打开仓库根目录。`miniprogramRoot` 是 `miniprogram/` |
+| `miniprogram/project.config.json` | 用开发者工具只打开 `miniprogram` 文件夹 |
+
+## 10. 验收时怎么跑，以及现在还不要配置
+
+在仓库根目录：
+
+```bash
+npm run check
+npm run pack:miniprogram
+```
+
+`npm run check` 同时跑上面两个检查脚本。通过只说明 Node 模拟和文件检查没失败。它不是微信开发者工具，也不是手机。逐条 ID、mock 边界和平台清单见 [验收矩阵](ACCEPTANCE.md)。
+
+现在不需要去公众平台改配置，也不需要提交审核。AppID 继续留在开发者工具里手选。配置本身也不能当成一定能上线。

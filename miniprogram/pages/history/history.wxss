@@ -49,6 +49,7 @@
   font-weight: 700;
   line-height: 1.4;
   word-break: break-word;
+  overflow-wrap: anywhere;
 }
 
 .delete,
@@ -57,6 +58,9 @@
   display: flex;
   align-items: center;
   justify-content: center;
+  box-sizing: border-box;
+  padding: 12rpx 16rpx;
+  line-height: 1.2;
   font-size: 36rpx;
   background: #ffffff;
   color: #9f1239;

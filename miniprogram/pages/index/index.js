@@ -9,10 +9,11 @@ const {
   formatClock,
   formatDuration,
   createId,
-  normalizeCaption
+  commitCaption
 } = require("../../utils/format");
 const { applyNavigationTheme } = require("../../utils/theme");
 const { createAccessGate } = require("../../utils/access-flow");
+const { assessRuntime } = require("../../utils/readiness");
 const {
   queryPrivacy,
   queryRecord,
@@ -45,6 +46,8 @@ Page({
   },
 
   onLoad() {
+    if (this._booted) return;
+    this._booted = true;
     const settings = loadSettings();
     this.sessionStartedAt = null;
     this.segments = [];
@@ -123,8 +126,23 @@ Page({
     this.engine.onStarted(() => {
       if (this._unloaded || !this.gate) return;
       if (!this.gate.recordingStarted()) return;
+      this.setData({
+        listening: true,
+        opening: false,
+        paused: false,
+        micDenied: false,
+        privacyNeeded: false,
+        privacyBlocked: false
+      });
       this.setKeepScreen(true);
       this.setStatus("listening", "正在听", languageLabel(this.data.sourceLanguage));
+    });
+
+    this.engine.onPending(() => {
+      if (this._unloaded || this.data.paused || this.data.stopping) return;
+      this.setData({ listening: false, opening: true });
+      this.setKeepScreen(true);
+      this.setStatus("pending", "正在重新连接", "刚才中断了，正在再试一次。现在没有在听。");
     });
   },
 
@@ -158,13 +176,20 @@ Page({
     });
   },
 
+  allowStart() {
+    const ready = assessRuntime(wx);
+    if (ready.ok) return true;
+    this.setStatus(ready.state, ready.label, ready.detail);
+    return false;
+  },
+
   onStart() {
-    if (!this.gate) return;
+    if (!this.gate || !this.allowStart()) return;
     this.gate.userStart();
   },
 
   onAgreePrivacy() {
-    if (!this.gate) return;
+    if (!this.gate || !this.allowStart()) return;
     this.gate.agree();
   },
 
@@ -344,13 +369,9 @@ Page({
       clearTimeout(this._interimTimer);
       this._interimTimer = null;
     }
-    const clean = normalizeCaption(text);
-    if (!clean) {
-      this.setData({ partialText: "" });
-      return;
-    }
     const previous = this.segments[this.segments.length - 1];
-    if (previous && previous.text === clean) {
+    const clean = commitCaption(previous && previous.text, text);
+    if (!clean) {
       this.setData({ partialText: "" });
       return;
     }
@@ -421,7 +442,19 @@ Page({
       return;
     }
     if (code === "network") {
-      this.setStatus("error", "网络异常", "请检查网络后，再点开始。");
+      this.setStatus("error", "网络异常", "请检查网络后，再点开始。现在没有在听。");
+      return;
+    }
+    if (code === "timeout") {
+      this.setStatus("error", "识别超时", "这次没有在限定时间内听完。请再点开始。现在没有在听。");
+      return;
+    }
+    if (code === "transmission") {
+      this.setStatus("error", "没有听完整", "刚才的声音没有传完。请再点开始。现在没有在听。");
+      return;
+    }
+    if (code === "start-timeout") {
+      this.setStatus("error", "没有开始听", "录音没有开始。请再点一次。如果总是这样，请让家人确认插件和隐私指引。");
       return;
     }
     if (code === "mic") {

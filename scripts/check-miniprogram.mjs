@@ -27,7 +27,10 @@ function loadCjs(file) {
   return module.exports;
 }
 
+let assertions = 0;
+
 function assert(condition, message) {
+  assertions += 1;
   if (!condition) throw new Error(message);
 }
 
@@ -143,9 +146,11 @@ function checkProjectShape() {
   assert(!page.includes("getRecorderManager"), "caption screen must not own the recorder");
   assert(!page.includes("requirePrivacyAuthorize"), "caption screen must not simulate privacy authorize");
   assert(!permission.includes("requirePrivacyAuthorize"), "permission helper must not simulate privacy authorize");
-  ["setKeepScreenOn", "正在听", "已暂停", "网络异常", "麦克风未授权", "requestRecordAuthorize"].forEach((needle) => {
+  ["setKeepScreenOn", "正在听", "已暂停", "网络异常", "麦克风未授权", "requestRecordAuthorize", "正在重新连接", "assessRuntime", "onPending"].forEach((needle) => {
     assert(page.includes(needle), "caption screen missing " + needle);
   });
+  assert(read("miniprogram/utils/readiness.js").includes("还没有 AppID"), "missing AppID copy");
+  assert(read("miniprogram/utils/readiness.js").includes("插件不可用"), "missing plugin copy");
   const requestFn = page.slice(page.indexOf("requestAuthorize()"), page.indexOf("onStart()"));
   assert(requestFn.includes("requestRecordAuthorize(wx"), "tap must call authorize directly");
   assert(!requestFn.includes("await"), "authorize request must stay on the tap stack");
@@ -188,6 +193,7 @@ function checkEngine() {
   assert(typeof facade.onFinal === "function", "onFinal");
   assert(typeof facade.onError === "function", "onError");
   assert(typeof facade.onStarted === "function", "onStarted");
+  assert(typeof facade.onPending === "function", "onPending");
 
   return createWechatSIEngine;
 }
@@ -582,7 +588,7 @@ async function testAccessGate() {
   assert(granted.statuses.every((item) => item.label !== "麦克风已允许"), "a start in progress is not described as already allowed");
   assert(granted.gate.recordingStarted() === true, "recorder callback accepts this open");
   assert(granted.gate.getPhase() === "listening", "listening begins at the recorder callback");
-  assert(granted.gate.recordingStarted() === false, "a second callback does not start another session");
+  assert(granted.gate.recordingStarted() === true, "a later recorder callback keeps the same listening session");
   granted.gate.userStart();
   assert(granted.starts.length === 1, "tapping start while listening does not start again");
 
@@ -681,4 +687,5 @@ await testRecognition(createWechatSIEngine);
 await testAccessGate();
 checkSyntax();
 console.log("miniprogram check ok");
+console.log("assertions passed: " + assertions);
 console.log("access gate simulation ok (not a phone test)");

@@ -251,6 +251,7 @@ function createAccessGate(hooks) {
       onStatus(COPY.micUnknown);
     },
     recordingStarted() {
+      if (phase === "listening") return true;
       if (!acceptStart || phase !== "opening") return false;
       acceptStart = false;
       phase = "listening";

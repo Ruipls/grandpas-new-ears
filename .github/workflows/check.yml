@@ -1,0 +1,25 @@
+name: check
+
+on:
+  pull_request:
+  push:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Run simulation checks
+        run: npm run check
+      - name: Build importable zip
+        run: npm run pack:miniprogram -- --out build/grandpas-new-ears-miniprogram.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: miniprogram-import-zip
+          path: |
+            build/grandpas-new-ears-miniprogram.zip
+            build/grandpas-new-ears-miniprogram.zip.sha256
+          if-no-files-found: error

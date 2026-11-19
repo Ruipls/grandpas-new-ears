@@ -4,23 +4,29 @@ const PLUGIN_NAME = "WechatSI";
 const DEFAULT_DURATION_MS = 30000;
 const DEFAULT_RESTART_DELAY_MS = 300;
 const DEFAULT_STOP_TIMEOUT_MS = 1600;
-
-const NETWORK_CODES = {
-  "-30003": true,
-  "-30004": true,
-  "-30006": true,
-  "-30008": true,
-  "-30010": true
-};
+// ASSUMPTION: the 2026-08-24 plugin document does not say how long onStart may
+// take. This only fires when that callback never arrives; it is not an official
+// recognition timeout (-30006 is that official code).
+const DEFAULT_START_WAIT_MS = 8000;
 
 function classifyWechatSIError(retcode) {
   const code = Number(retcode);
+  // Codes and meanings are the 2026-08-24 Chinese plugin document.
   if (code === -30011 || code === -30012) return "ignore";
   if (code === -30002) return "interrupted";
   if (code === -30001) return "mic";
+  if (code === -30004 || code === -30008 || code === -30010) return "network";
+  if (code === -30006) return "timeout";
+  if (code === -30003) return "transmission";
   if (code === -40001) return "limited";
-  if (NETWORK_CODES[String(code)]) return "network";
+  if (code === -30007 || code === -30009) return "unavailable";
   return "failed";
+}
+
+function canRetry(kind) {
+  // ASSUMPTION: one automatic retry is our recovery policy. The plugin
+  // document lists the errors but does not say to retry them.
+  return kind === "network" || kind === "timeout" || kind === "transmission";
 }
 
 function normalizeLang(lang) {
@@ -49,12 +55,14 @@ function createWechatSIEngine(options) {
   const duration = settings.duration || DEFAULT_DURATION_MS;
   const restartDelay = settings.restartDelay == null ? DEFAULT_RESTART_DELAY_MS : settings.restartDelay;
   const stopTimeout = settings.stopTimeout == null ? DEFAULT_STOP_TIMEOUT_MS : settings.stopTimeout;
+  const startWait = settings.startWait == null ? DEFAULT_START_WAIT_MS : settings.startWait;
 
   const handlers = {
     interim() {},
     final() {},
     error() {},
-    started() {}
+    started() {},
+    pending() {}
   };
 
   let manager = null;
@@ -65,9 +73,10 @@ function createWechatSIEngine(options) {
   let lang = "zh_CN";
   let interim = "";
   let generation = 0;
-  let networkRetries = 0;
+  let transientRetries = 0;
   let restartTimer = null;
   let stopTimer = null;
+  let startTimer = null;
   let stopWaiter = null;
 
   function clearRestart() {
@@ -81,6 +90,13 @@ function createWechatSIEngine(options) {
     if (stopTimer != null) {
       cancel(stopTimer);
       stopTimer = null;
+    }
+  }
+
+  function clearStartTimer() {
+    if (startTimer != null) {
+      cancel(startTimer);
+      startTimer = null;
     }
   }
 
@@ -108,10 +124,12 @@ function createWechatSIEngine(options) {
       throw new Error("WechatSI manager missing");
     }
     manager.onStart = function () {
+      clearStartTimer();
+      if (!active) return;
       discardNextStop = false;
       startedPending = false;
       running = true;
-      if (active) handlers.started();
+      handlers.started();
     };
     manager.onRecognize = function (res) {
       if (!running && !active) return;
@@ -119,6 +137,7 @@ function createWechatSIEngine(options) {
       if (active) handlers.interim(interim);
     };
     manager.onStop = function (res) {
+      clearStartTimer();
       if (discardNextStop) {
         discardNextStop = false;
         running = false;
@@ -137,27 +156,33 @@ function createWechatSIEngine(options) {
       const stillActive = active;
       finishStopWaiter();
       if (stillActive) {
-        networkRetries = 0;
-        scheduleRestart();
+        transientRetries = 0;
+        scheduleRestart("continue");
       }
     };
     manager.onError = function (res) {
       const kind = classifyWechatSIError(res && res.retcode);
       if (kind === "ignore") {
+        // -30011: a start arrived while recognition is already running.
+        // The official note says the current task continues, so do not stop it.
+        // -30012: stop was called with no task. Let an in-flight stop() finish.
         if (Number(res && res.retcode) === -30012) {
+          clearStartTimer();
           running = false;
           startedPending = false;
           finishStopWaiter();
         }
         return;
       }
+      if (!active) return;
+      clearStartTimer();
       running = false;
       startedPending = false;
       interim = "";
       handlers.interim("");
-      if (active && kind === "network" && networkRetries < 1) {
-        networkRetries += 1;
-        scheduleRestart();
+      if (active && canRetry(kind) && transientRetries < 1) {
+        transientRetries += 1;
+        scheduleRestart("retry");
         return;
       }
       active = false;
@@ -210,27 +235,50 @@ function createWechatSIEngine(options) {
         // with the system default input, so a headset or Type-C mic that the
         // phone already treats as the headset microphone is used automatically.
         // audioSource cannot be set here. Do not also call wx.getRecorderManager();
-        // the plugin owns that global recorder.
+        // the plugin owns that global recorder. Do not keep its temporary file.
+        armStartTimer();
         current.start({
           duration: duration,
           lang: lang
         });
         resolve();
       } catch (error) {
+        clearStartTimer();
         startedPending = false;
         failBegin(notifyOnFailure, { code: "failed", retcode: null, message: "failed" }, reject);
       }
     });
   }
 
-  function scheduleRestart() {
+  function scheduleRestart(reason) {
     clearRestart();
+    if (reason === "retry") handlers.pending();
     const token = generation;
     restartTimer = schedule(() => {
       restartTimer = null;
       if (!active || token !== generation) return;
       begin(true).catch(() => {});
     }, restartDelay);
+  }
+
+  function armStartTimer() {
+    clearStartTimer();
+    const token = generation;
+    startTimer = schedule(() => {
+      startTimer = null;
+      if (!active || token !== generation || running) return;
+      startedPending = false;
+      running = false;
+      active = false;
+      clearRestart();
+      try {
+        if (manager && typeof manager.stop === "function") manager.stop();
+      } catch (error) {
+        // The plugin may already be gone. The page still must not stay on 正在听.
+      }
+      emitError("start-timeout", null);
+      finishStopWaiter();
+    }, startWait);
   }
 
   function armStopTimeout() {
@@ -255,7 +303,7 @@ function createWechatSIEngine(options) {
     start(request) {
       lang = normalizeLang(request && request.lang);
       active = true;
-      networkRetries = 0;
+      transientRetries = 0;
       return begin(false);
     },
     stop() {
@@ -263,6 +311,7 @@ function createWechatSIEngine(options) {
       active = false;
       generation += 1;
       clearRestart();
+      clearStartTimer();
       if (!shouldStop) return Promise.resolve();
       if (stopWaiter) {
         return new Promise((resolve) => {
@@ -301,12 +350,16 @@ function createWechatSIEngine(options) {
     },
     onStarted(handler) {
       handlers.started = typeof handler === "function" ? handler : function () {};
+    },
+    onPending(handler) {
+      handlers.pending = typeof handler === "function" ? handler : function () {};
     }
   };
 }
 
 module.exports = {
   DEFAULT_DURATION_MS,
+  DEFAULT_START_WAIT_MS,
   classifyWechatSIError,
   createWechatSIEngine
 };
