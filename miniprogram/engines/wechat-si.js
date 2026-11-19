@@ -242,8 +242,13 @@ function createWechatSIEngine(options) {
         // -30012: stop with no task. The stop() promise can finish, but a later
         // onStop for the same turn is still accepted until a new start settles.
         if (Number(res && res.retcode) === -30012) {
+          // No task is in progress. Finish this stop's start watchdog, but
+          // keep the settle window so a continue requested in the same moment
+          // does not open a second recorder before the stop has quiesced.
+          // The confirm timer releases that continue; it must not cancel it.
           clearStartTimer();
           awaitingStart = false;
+          recording = false;
           finishStopWaiter();
         }
         return;
@@ -390,16 +395,25 @@ function createWechatSIEngine(options) {
     giveUpTimer = schedule(() => {
       giveUpTimer = null;
       if (token !== turnToken) return;
-      if (stopSettled && !recording && !awaitingStart) return;
+      // This timer only finishes the stop that armed it. A start() requested
+      // while that stop was still settling is waiting in pendingBegins and
+      // must be allowed to run. The plugin does not provide a session id, so
+      // the split is only "this stop" versus "a later start request".
+      const queued = pendingBegins.splice(0, pendingBegins.length);
       awaitingStart = false;
       recording = false;
-      if (active) {
+      finishStopWaiter();
+      if (queued.length) {
+        stopSettled = true;
+        queued.forEach((fn) => fn());
+        return;
+      }
+      if (active && fallbackStopSent) {
         active = false;
         clearRestart();
-        emitError("start-timeout", null);
+        emitError("no-result", null);
       }
-      finishStopWaiter();
-      markStopSettled();
+      stopSettled = true;
     }, stopConfirm);
   }
 
@@ -428,6 +442,7 @@ function createWechatSIEngine(options) {
       const shouldStop = active || recording || awaitingStart || Boolean(interim) || Boolean(provisionalText);
       active = false;
       turnToken += 1;
+      pendingBegins.splice(0, pendingBegins.length);
       clearRestart();
       clearStartTimer();
       clearSegmentTimer();

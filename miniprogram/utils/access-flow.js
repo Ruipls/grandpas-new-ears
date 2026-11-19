@@ -175,6 +175,9 @@ function createAccessGate(hooks) {
   }
 
   return {
+    shouldRecheckPrivacy() {
+      return privacyFailed === true;
+    },
     getPhase() {
       return phase;
     },

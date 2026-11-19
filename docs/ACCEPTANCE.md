@@ -11,11 +11,16 @@ npm run check
 npm run pack:miniprogram
 ```
 
-`npm run check` 会跑：
+`npm run check` 还会跑 `scripts/behavioral-harness.mjs`。它的断言没有为了变绿而改过。上一轮 32 秒停一次、再等 8 秒就结束的策略保持不变。
+
+暂停后立刻继续，或 `stop` 立刻收到 `-30012`，旧的收尾计时器只结束那一次 `stop`，不再把后面的开始请求清掉。到确认时间后才会打开下一次录音，并且不会在没有回调时连续 `start`。`getPrivacySetting` 失败后再点「开始」会重新查询；查询仍失败就不会申请麦克风。已经收到 `onStart` 却一直没有正式结果时，提示是「没有收到结果」，不是「没有开始听」。
+
+插件没有 session id。新的 `onStart` 之后才到的 `onStop` 分不清是不是上一小段，行为探针把这件事记为 INFO，不单独阻止接入前验收。
 
 - `scripts/check-miniprogram.mjs`
 - `scripts/check-contract.mjs`
 - `scripts/check-timing.mjs`
+- `scripts/behavioral-harness.mjs`
 
 另外单独跑原独立探针，不把它的失败改成通过：
 

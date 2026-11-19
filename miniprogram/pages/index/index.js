@@ -157,7 +157,7 @@ Page({
   },
 
   refreshAccess() {
-    Promise.all([queryPrivacy(wx), queryRecord(wx)]).then((results) => {
+    return Promise.all([queryPrivacy(wx), queryRecord(wx)]).then((results) => {
       if (this._unloaded || !this.gate) return;
       const privacy = results[0];
       const record = results[1];
@@ -196,7 +196,14 @@ Page({
 
   onStart() {
     if (!this.gate || !this.allowStart()) return;
-    this.gate.userStart();
+    if (!this.gate.shouldRecheckPrivacy()) {
+      this.gate.userStart();
+      return;
+    }
+    this.refreshAccess().then(() => {
+      if (this._unloaded || !this.gate || !this.allowStart()) return;
+      this.gate.userStart();
+    });
   },
 
   onAgreePrivacy() {
@@ -494,6 +501,10 @@ Page({
     }
     if (code === "start-timeout") {
       this.setStatus("error", "没有开始听", "录音没有开始。请再点一次。如果总是这样，请让家人确认插件和隐私指引。");
+      return;
+    }
+    if (code === "no-result") {
+      this.setStatus("error", "没有收到结果", "刚才已经在听，但这几秒没有收到正式结果，所以停了。请再点开始。现在没有在听。");
       return;
     }
     if (code === "mic") {

@@ -272,7 +272,7 @@ await (async () => {
   assert(manager.stops === 1, "missing onStop still stops only once");
   assert(manager.starts.length === 1, "missing onStop does not start again");
   assert(!listening(page), "missing onStop is not listening");
-  assert(page.data.statusLabel === "没有开始听", "missing onStop ends the session");
+  assert(page.data.statusLabel === "没有收到结果", "missing onStop says the result did not arrive");
   const starts = manager.starts.length;
   advance(CONFIRM);
   await micro();
@@ -365,6 +365,73 @@ await (async () => {
   await micro();
   assert(listening(page), "the next onStart is listening");
   ids.push("TIME-SEAM");
+})();
+
+await (async () => {
+  const page = await boot();
+  page.onStart();
+  await micro();
+  page.onPause();
+  await micro();
+  page.onStart();
+  await micro();
+  assert(manager.starts.length === 1, "continue does not start before the previous stop settles");
+  advance(1600 + CONFIRM);
+  await micro();
+  assert(manager.starts.length === 2, "the queued continue starts after the old stop settles");
+  assert(page.data.statusLabel !== "没有开始听", "the old stop does not cancel the new start");
+  assert(!listening(page), "the new start is not listening before onStart");
+  const starts = manager.starts.length;
+  advance(CONFIRM);
+  await micro();
+  assert(manager.starts.length === starts, "no callback does not start an unbounded extra segment");
+  ids.push("TIME-CONTINUE-AFTER-SILENT-PAUSE");
+})();
+
+await (async () => {
+  const page = await boot();
+  page.onStart();
+  await micro();
+  const original = manager.stop.bind(manager);
+  manager.stop = function stopWith30012() {
+    original();
+    if (typeof this.onError === "function") this.onError({ retcode: -30012, msg: "no task" });
+  };
+  page.onPause();
+  await micro();
+  page.onStart();
+  await micro();
+  assert(manager.starts.length === 1, "-30012 does not open the next recorder immediately");
+  advance(1600);
+  await micro();
+  assert(manager.starts.length === 1, "-30012 still waits through the stop timeout");
+  advance(CONFIRM);
+  await micro();
+  assert(manager.starts.length === 2, "-30012 confirm releases the queued continue");
+  assert(page.data.statusLabel !== "没有开始听", "-30012 confirm does not report that listening never started");
+  ids.push("TIME-30012-CONTINUE");
+})();
+
+await (async () => {
+  const page = await boot();
+  page.onStart();
+  await micro();
+  page.onPause();
+  await micro();
+  page.onStart();
+  page.onStart();
+  page.onStart();
+  await micro();
+  advance(1600 + CONFIRM);
+  await micro();
+  assert(manager.starts.length === 2, "repeated continue taps open one recorder, not many");
+  page.onHide();
+  await micro();
+  const starts = manager.starts.length;
+  advance(DURATION + GRACE + CONFIRM);
+  await micro();
+  assert(manager.starts.length === starts, "hide after continue does not keep starting");
+  ids.push("TIME-RAPID-AND-HIDE");
 })();
 
 console.log("timing check ok");
