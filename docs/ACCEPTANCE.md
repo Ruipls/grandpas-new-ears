@@ -1,6 +1,6 @@
 # 验收矩阵
 
-给独立验收用。这里的 PASS 只表示下面命令在 Node 里实际跑过，或实际读到了样式规则。真机和微信开发者工具都是 NOT RUN。不要把 PASS 读成手机上已经能听，也不要读成可以提交审核。
+给独立验收用。这里的 PASS 只表示下面命令在 Node 里实际跑过，或实际读到了样式规则。真机和微信开发者工具都是 NOT RUN。
 
 ## 命令
 
@@ -11,15 +11,29 @@ npm run check
 npm run pack:miniprogram
 ```
 
-`npm run check` 会先做语法检查，再跑 `scripts/check-miniprogram.mjs` 和 `scripts/check-contract.mjs`。成功时输出里有 `assertions passed`、`contract assertions passed`、`contract flows passed` 和 `contract flow ids`。下面的 ID 必须出现在 `contract flow ids` 里，才算该条模拟通过。
+`npm run check` 会跑：
 
-打包：
+- `scripts/check-miniprogram.mjs`
+- `scripts/check-contract.mjs`
+- `scripts/independent-harness.mjs`
 
-```bash
-npm run pack:miniprogram -- --out build/grandpas-new-ears-miniprogram.zip
-```
+独立探针的插件是被动的：`start` / `stop` 只记次数，回调只在测试自己发出时才到。成功时计数里没有 `FAIL`。它不是微信开发者工具，也不是手机。
 
-解压后导入 `grandpas-new-ears` 这一层。这一层有 `project.config.json`，并且 `miniprogramRoot` 是 `miniprogram/`。只打开 `miniprogram/` 也可以，那里另有一份 `project.config.json`。两份 `appid` 都必须仍是 `touristappid`。
+## 这一轮对着独立探针修过的点
+
+| 原先失败 | 现在的处理 | 真机 |
+| --- | --- | --- |
+| 暂停、离开或结束后，`onStop` 比 1.6 秒更晚才到，正式结果被丢掉 | 1.6 秒先把已有的「正在说」收成临时一句，便于界面往下走。真正的 `onStop.result` 再来时替换那一句。没有「正在说」时，迟到的正式结果仍然收下。不会因此再开一段录音。页面已经结束或卸载后，不再改界面，也不自动保存 | NOT RUN |
+| 一段的 `onStop` 到下一次 `onStart` 之间仍显示正在听 | 这段结束就离开「正在听」，显示「正在接上」，直到下一次 `onStart` | NOT RUN |
+| 还没 `onStart` 就收到 `onStop`，每 300 毫秒无限 `start` | 这种未确认开始的结束最多再试一次，然后停止并提示失败，不再连续开录音 | NOT RUN |
+| 续段空档里第二个带结果的 `onStop` 被忽略 | 下一次 `start` 之前又来的 `onStop.result` 仍算上一小段的正式字幕，另成一句。插件没有 session id，所以只按「这一次有没有收到 onStart、用户是否还要继续听」区分，不用世代号假装两段录音已经隔离 | NOT RUN |
+| 文档写每 30 秒主动收段，代码只传 `duration: 30000` | 传给插件的 duration 仍是 30000，官方会到时自己停。若还没有 `onStop`，客户端在满 30 秒前 1 毫秒再调用一次 `stop`，只要这一段结果，不在未知状态下连续开新录音。探针在 `onStart` 之后不允许还挂着一个大于等于 30000 毫秒的定时器，所以兜底比 duration 早 1 毫秒 | NOT RUN |
+| `-30001` 被写成麦克风未授权 | 官方说明是「录音接口出错」。页面标题是「录音出错」，不把它当成已经拒绝 `scope.record` | NOT RUN |
+| `getPrivacySetting` 失败后仍去 `wx.authorize` | 查询失败就停住，提示暂时确认不了隐私授权，不把它当成已经同意，也不申请麦克风。再点开始可以再查 | NOT RUN |
+
+`onRecognize` 不在 2026-08-24 中英文插件正文里。没有它时，正式字幕只靠 `onStop.result`。收到它时只更新「正在说」。
+
+2026-08-24 英文插件页没有 “out of maintenance”。官方示例版本 `0.0.7` 不表示仓库里的 `0.3.6` 不能用。后台实际版本仍待核实。
 
 ## 矩阵
 
@@ -53,6 +67,8 @@ npm run pack:miniprogram -- --out build/grandpas-new-ears-miniprogram.zip
 
 `scripts/check-miniprogram.mjs` 另外检查工程形状、30 秒续听、暂停不自动再开、授权门的同意/拒绝/设置返回。它的输出是 `assertions passed` 和 `access gate simulation ok (not a phone test)`。这些同样不是真机。
 
+`scripts/check-contract.mjs` 里的插件 `stop()` 会同步发出 `onStop`。这盖不住「停了以后很久才回调」的问题。那一类时序以 `scripts/independent-harness.mjs` 为准：回调只有测试发出时才到。
+
 ## 模拟边界
 
 契约模拟按插件文档实现这些行为：`start` 只接收 `duration` 和 `lang`；已在录音时再次 `start` 回报 `-30011` 且当前任务还在；没有任务时 `stop` 回报 `-30012`；成功的 `stop` 走 `onStop`，字段有 `result`、`tempFilePath`、`duration`、`fileSize`。页面测试用的就是这个管理器，不是把回调写成和当前代码一样的形状来放过实现。
@@ -60,8 +76,9 @@ npm run pack:miniprogram -- --out build/grandpas-new-ears-miniprogram.zip
 下面几条是假设，不是文档原句：
 
 - `onRecognize` 的 `result` 是这一段正在说的文字。2026-08-24 的中文方法表没有这个回调。代码仍监听它；真机没有时，正式字幕仍来自 `onStop`。
-- 网络、超时、传输出错各自动再试一次。文档只给了错误码，没有要求重试。
+- 网络、超时、传输出错各自动再试一次。文档只给了错误码，没有要求重试。没有收到 `onStart` 就结束的情况也只再试一次，然后停止。
 - `onStart` 超过 8 秒还不来，就停止并显示「没有开始听」。文档没有这个时限。官方的识别超时是 `-30006`。
+- 客户端在插件 duration 前 1 毫秒调用一次 `stop`，只为在满 30 秒时如果还没有 `onStop` 就停下来要结果。插件参数仍是 30000。这 1 毫秒不是官方时限。
 - `touristappid` 是开发者工具和本仓库的占位。`wx.getAccountInfoSync` 文档只说 `appId` 是字符串，没有把它列为枚举。读不到账号信息时不单靠这一条拦截，插件不可用仍会拦截。
 - 30 秒主动分段是为了避开社区里「大约 40 秒没有 `onStop`」的报告。官方单次上限仍是 60000 毫秒。
 

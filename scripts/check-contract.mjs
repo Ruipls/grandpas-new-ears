@@ -719,7 +719,7 @@ async function testPages() {
     page.onStart();
     currentManager.emitStart();
     currentManager.emitError(-30001);
-    assert(page.data.statusLabel === "麦克风未授权", "recording error copy");
+    assert(page.data.statusLabel === "录音出错", "recording error copy");
     assert(!listening(page), "recording error is not listening");
   });
 

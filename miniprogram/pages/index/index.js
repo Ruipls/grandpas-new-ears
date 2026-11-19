@@ -113,9 +113,15 @@ Page({
       }, 120);
     });
 
-    this.engine.onFinal((text) => {
-      if (this._unloaded) return;
+    this.engine.onFinal((text, meta) => {
+      if (this._unloaded || this._closedSession) return;
+      this._provisional = Boolean(meta && meta.provisional);
       this.appendSegment(text);
+    });
+
+    this.engine.onRevise((text) => {
+      if (this._unloaded || this._closedSession) return;
+      this.replaceProvisional(text);
     });
 
     this.engine.onError((error) => {
@@ -138,11 +144,15 @@ Page({
       this.setStatus("listening", "正在听", languageLabel(this.data.sourceLanguage));
     });
 
-    this.engine.onPending(() => {
-      if (this._unloaded || this.data.paused || this.data.stopping) return;
+    this.engine.onPending((reason) => {
+      if (this._unloaded || this.data.paused || this.data.stopping || this._closedSession) return;
       this.setData({ listening: false, opening: true });
       this.setKeepScreen(true);
-      this.setStatus("pending", "正在重新连接", "刚才中断了，正在再试一次。现在没有在听。");
+      if (reason === "retry") {
+        this.setStatus("pending", "正在重新连接", "刚才中断了，正在再试一次。现在没有在听。");
+        return;
+      }
+      this.setStatus("pending", "正在接上", "上一小段已经结束。下一小段要等录音真正开始，才会显示正在听。");
     });
   },
 
@@ -153,6 +163,7 @@ Page({
       const record = results[1];
       this.gate.noteQuery({
         privacyKnown: privacy.privacyKnown,
+        privacyFailed: privacy.failed === true,
         needPrivacy: privacy.needPrivacy,
         recordKnown: record.recordKnown,
         recordGranted: record.recordGranted,
@@ -201,6 +212,7 @@ Page({
   async beginEngine() {
     if (this._stopPromise) await this._stopPromise;
     if (this._unloaded || !this.gate || !this.gate.isOpening()) return;
+    this._closedSession = false;
     if (!this.sessionStartedAt) {
       this.sessionStartedAt = new Date();
       this.segments = [];
@@ -388,6 +400,31 @@ Page({
     }, () => this.scrollToEnd());
   },
 
+  replaceProvisional(text) {
+    if (this._interimTimer) {
+      clearTimeout(this._interimTimer);
+      this._interimTimer = null;
+    }
+    const clean = commitCaption("", text);
+    if (!clean) {
+      this.setData({ partialText: "" });
+      return;
+    }
+    const last = this.segments[this.segments.length - 1];
+    if (this._provisional && last) {
+      last.text = clean;
+      this._provisional = false;
+      this.segments = this.segments.slice();
+      this.setData({
+        segments: this.segments,
+        partialText: ""
+      }, () => this.scrollToEnd());
+      return;
+    }
+    this._provisional = false;
+    this.appendSegment(clean);
+  },
+
   saveCurrentSession() {
     if (!this.segments.length || !this.sessionStartedAt) return;
     appendHistory({
@@ -408,6 +445,8 @@ Page({
     this.sessionStartedAt = null;
     this.segments = [];
     this._pendingInterim = "";
+    this._provisional = false;
+    this._closedSession = true;
     if (this.gate) this.gate.reset();
     this.setKeepScreen(false);
     this.setData({
@@ -458,8 +497,7 @@ Page({
       return;
     }
     if (code === "mic") {
-      this.setData({ micDenied: true });
-      this.setStatus("error", "麦克风未授权", "请打开设置，允许使用麦克风。如果已经允许，请看看麦克风是否被别的应用占用。");
+      this.setStatus("error", "录音出错", "录音接口出错。这不一定是没授权。请再点开始。如果之前点过拒绝，再去设置里打开麦克风。现在没有在听。");
       return;
     }
     if (code === "limited") {

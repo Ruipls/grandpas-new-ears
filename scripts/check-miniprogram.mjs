@@ -146,9 +146,10 @@ function checkProjectShape() {
   assert(!page.includes("getRecorderManager"), "caption screen must not own the recorder");
   assert(!page.includes("requirePrivacyAuthorize"), "caption screen must not simulate privacy authorize");
   assert(!permission.includes("requirePrivacyAuthorize"), "permission helper must not simulate privacy authorize");
-  ["setKeepScreenOn", "正在听", "已暂停", "网络异常", "麦克风未授权", "requestRecordAuthorize", "正在重新连接", "assessRuntime", "onPending"].forEach((needle) => {
+  ["setKeepScreenOn", "正在听", "已暂停", "网络异常", "requestRecordAuthorize", "正在重新连接", "assessRuntime", "onPending", "录音出错"].forEach((needle) => {
     assert(page.includes(needle), "caption screen missing " + needle);
   });
+  assert(read("miniprogram/utils/access-flow.js").includes("麦克风未授权"), "real microphone denial copy");
   assert(read("miniprogram/utils/readiness.js").includes("还没有 AppID"), "missing AppID copy");
   assert(read("miniprogram/utils/readiness.js").includes("插件不可用"), "missing plugin copy");
   const requestFn = page.slice(page.indexOf("requestAuthorize()"), page.indexOf("onStart()"));
@@ -293,6 +294,7 @@ async function testRecognition(createWechatSIEngine) {
   const timeoutScheduler = createScheduler();
   let timeoutStarts = 0;
   const timeoutFinals = [];
+  const timeoutRevisions = [];
   const timeoutFake = {
     start() {
       timeoutStarts += 1;
@@ -308,6 +310,7 @@ async function testRecognition(createWechatSIEngine) {
     stopTimeout: 0
   });
   timeoutEngine.onFinal((text) => timeoutFinals.push(text));
+  timeoutEngine.onRevise((text) => timeoutRevisions.push(text));
   await timeoutEngine.start({ lang: "zh_CN" });
   timeoutFake.onRecognize({ result: "半句" });
   const timeoutDone = timeoutEngine.stop();
@@ -315,12 +318,13 @@ async function testRecognition(createWechatSIEngine) {
   await timeoutDone;
   assert(timeoutFinals[0] === "半句", "stop timeout keeps the interim line");
   const restarted = timeoutEngine.start({ lang: "zh_CN" });
-  assert(timeoutStarts === 1, "do not start again before the stale stop arrives");
+  assert(timeoutStarts === 1, "do not start again before the late onStop arrives");
   timeoutFake.onStop({ result: "迟到" });
   timeoutScheduler.flush();
   await restarted;
-  assert(timeoutFinals.length === 1, "stale onStop is ignored");
-  assert(timeoutStarts === 2, "listening can start after the stale stop");
+  assert(timeoutFinals.length === 1, "the late onStop does not become a second caption");
+  assert(timeoutRevisions[0] === "迟到", "the late onStop replaces the provisional line");
+  assert(timeoutStarts === 2, "listening can start after the late onStop");
 
   const missing = createWechatSIEngine({
     loadManager() {

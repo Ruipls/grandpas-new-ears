@@ -60,24 +60,38 @@ function createWechatSIEngine(options) {
   const handlers = {
     interim() {},
     final() {},
+    revise() {},
     error() {},
     started() {},
     pending() {}
   };
 
+  // The plugin manager is one global object and its callbacks carry no session id.
+  // These flags only describe the one local turn we opened. They are not a
+  // substitute for a plugin session.
+  // awaitingStart: manager.start() was called and onStart has not arrived.
+  // recording: onStart arrived and this turn has not ended.
+  // stopSettled: a user stop is not waiting for that turn's onStop.
+  // provisionalText: a caption emitted only because stop() waited past stopTimeout.
   let manager = null;
   let active = false;
-  let running = false;
-  let startedPending = false;
-  let discardNextStop = false;
+  let recording = false;
+  let awaitingStart = false;
+  let stopSettled = true;
   let lang = "zh_CN";
   let interim = "";
-  let generation = 0;
+  let provisionalText = "";
+  let turnToken = 0;
   let transientRetries = 0;
+  let blindStops = 0;
   let restartTimer = null;
   let stopTimer = null;
   let startTimer = null;
+  let segmentTimer = null;
+  let giveUpTimer = null;
   let stopWaiter = null;
+  const pendingBegins = [];
+  const MAX_BLIND_STOPS = 1;
 
   function clearRestart() {
     if (restartTimer != null) {
@@ -100,12 +114,49 @@ function createWechatSIEngine(options) {
     }
   }
 
+  function clearSegmentTimer() {
+    if (segmentTimer != null) {
+      cancel(segmentTimer);
+      segmentTimer = null;
+    }
+  }
+
+  function clearGiveUp() {
+    if (giveUpTimer != null) {
+      cancel(giveUpTimer);
+      giveUpTimer = null;
+    }
+  }
+
   function finishStopWaiter() {
     clearStopTimer();
     if (!stopWaiter) return;
     const resolve = stopWaiter;
     stopWaiter = null;
     resolve();
+  }
+
+  function markStopSettled() {
+    if (stopSettled) return;
+    stopSettled = true;
+    const queued = pendingBegins.splice(0);
+    queued.forEach((fn) => fn());
+  }
+
+  function emitCaption(text, provisional) {
+    if (!text) return;
+    if (provisional) {
+      provisionalText = text;
+      handlers.final(text, { provisional: true });
+      return;
+    }
+    if (provisionalText) {
+      const previous = provisionalText;
+      provisionalText = "";
+      if (text !== previous) handlers.revise(text);
+      return;
+    }
+    handlers.final(text);
   }
 
   function emitError(code, retcode) {
@@ -125,59 +176,71 @@ function createWechatSIEngine(options) {
     }
     manager.onStart = function () {
       clearStartTimer();
+      clearGiveUp();
       if (!active) return;
-      discardNextStop = false;
-      startedPending = false;
-      running = true;
+      awaitingStart = false;
+      recording = true;
+      blindStops = 0;
+      armSegmentDeadline();
       handlers.started();
     };
+    // onRecognize is absent from the 2026-08-24 method table. It is optional.
+    // Final text always comes from onStop.result. Missing this callback is fine.
     manager.onRecognize = function (res) {
-      if (!running && !active) return;
+      if (!active || (!recording && !awaitingStart)) return;
       interim = normalizeCaption(res && res.result);
-      if (active) handlers.interim(interim);
+      handlers.interim(interim);
     };
     manager.onStop = function (res) {
       clearStartTimer();
-      if (discardNextStop) {
-        discardNextStop = false;
-        running = false;
-        startedPending = false;
-        interim = "";
-        finishStopWaiter();
-        return;
-      }
-      const wasRunning = running || startedPending;
-      running = false;
-      startedPending = false;
-      const text = normalizeCaption(res && res.result) || interim;
+      clearSegmentTimer();
+      clearGiveUp();
+      const endedBeforeStart = awaitingStart && !recording;
+      const official = normalizeCaption(res && res.result);
+      const text = official || ((recording || provisionalText) ? normalizeCaption(interim) : "");
       interim = "";
+      awaitingStart = false;
+      recording = false;
       if (active) handlers.interim("");
-      if ((wasRunning || stopWaiter) && text) handlers.final(text);
+      if (text) emitCaption(text, false);
       const stillActive = active;
       finishStopWaiter();
-      if (stillActive) {
-        transientRetries = 0;
-        scheduleRestart("continue");
+      markStopSettled();
+      if (!stillActive) return;
+      if (endedBeforeStart) {
+        blindStops += 1;
+        if (blindStops <= MAX_BLIND_STOPS) {
+          scheduleRestart("retry");
+          return;
+        }
+        active = false;
+        clearRestart();
+        emitError("failed", res && res.retcode);
+        return;
       }
+      blindStops = 0;
+      transientRetries = 0;
+      scheduleRestart("continue");
     };
     manager.onError = function (res) {
       const kind = classifyWechatSIError(res && res.retcode);
       if (kind === "ignore") {
-        // -30011: a start arrived while recognition is already running.
-        // The official note says the current task continues, so do not stop it.
-        // -30012: stop was called with no task. Let an in-flight stop() finish.
+        // -30011: start while a task is running. The official note says that
+        // task continues, so this callback must not stop it or start another.
+        // -30012: stop with no task. The stop() promise can finish, but a later
+        // onStop for the same turn is still accepted until a new start settles.
         if (Number(res && res.retcode) === -30012) {
           clearStartTimer();
-          running = false;
-          startedPending = false;
+          awaitingStart = false;
           finishStopWaiter();
         }
         return;
       }
-      if (!active) return;
+      if (!active && stopSettled) return;
       clearStartTimer();
-      running = false;
-      startedPending = false;
+      clearSegmentTimer();
+      awaitingStart = false;
+      recording = false;
       interim = "";
       handlers.interim("");
       if (active && canRetry(kind) && transientRetries < 1) {
@@ -186,116 +249,152 @@ function createWechatSIEngine(options) {
         return;
       }
       active = false;
+      turnToken += 1;
       clearRestart();
       emitError(kind, res && res.retcode);
       finishStopWaiter();
+      markStopSettled();
     };
     return manager;
   }
 
-  function failBegin(notifyOnFailure, failure, reject) {
+  function failClosed(notifyOnFailure, failure) {
     active = false;
+    turnToken += 1;
+    clearRestart();
+    clearStartTimer();
+    clearSegmentTimer();
     if (notifyOnFailure) handlers.error(failure);
-    reject(failure);
+    markStopSettled();
+    return failure;
   }
 
-  function begin(notifyOnFailure, attempt) {
-    const tries = attempt || 0;
+  function openRecorder(notifyOnFailure) {
+    if (!active || recording || awaitingStart) return null;
+    let current;
+    try {
+      current = load();
+    } catch (error) {
+      return failClosed(notifyOnFailure, { code: "unavailable", retcode: null, message: "unavailable" });
+    }
+    try {
+      awaitingStart = true;
+      armStartTimer();
+      // Official start() accepts only duration and lang. Passing duration asks
+      // the plugin to stop itself at that time. The segment deadline below is
+      // the client-side stop if that callback never arrives. Do not keep the
+      // temporary recording file.
+      current.start({
+        duration: duration,
+        lang: lang
+      });
+      return null;
+    } catch (error) {
+      clearStartTimer();
+      awaitingStart = false;
+      return failClosed(notifyOnFailure, { code: "failed", retcode: null, message: "failed" });
+    }
+  }
+
+  function begin(notifyOnFailure) {
     return new Promise((resolve, reject) => {
-      if (running || startedPending) {
-        resolve();
-        return;
-      }
-      if (discardNextStop) {
-        if (tries >= 8) {
-          discardNextStop = false;
-          failBegin(notifyOnFailure, { code: "failed", retcode: null, message: "failed" }, reject);
+      const run = () => {
+        if (!active || recording || awaitingStart) {
+          resolve();
           return;
         }
-        const token = generation;
-        schedule(() => {
-          if (!active || token !== generation) {
-            resolve();
-            return;
-          }
-          begin(notifyOnFailure, tries + 1).then(resolve, reject);
-        }, restartDelay);
-        return;
-      }
-      let current;
-      try {
-        current = load();
-      } catch (error) {
-        failBegin(notifyOnFailure, { code: "unavailable", retcode: null, message: "unavailable" }, reject);
-        return;
-      }
-      try {
-        startedPending = true;
-        // Official start() only accepts duration and lang. The plugin records
-        // with the system default input, so a headset or Type-C mic that the
-        // phone already treats as the headset microphone is used automatically.
-        // audioSource cannot be set here. Do not also call wx.getRecorderManager();
-        // the plugin owns that global recorder. Do not keep its temporary file.
-        armStartTimer();
-        current.start({
-          duration: duration,
-          lang: lang
-        });
-        resolve();
-      } catch (error) {
-        clearStartTimer();
-        startedPending = false;
-        failBegin(notifyOnFailure, { code: "failed", retcode: null, message: "failed" }, reject);
-      }
+        const failure = openRecorder(notifyOnFailure);
+        if (failure) reject(failure);
+        else resolve();
+      };
+      if (stopSettled) run();
+      else pendingBegins.push(run);
     });
   }
 
   function scheduleRestart(reason) {
     clearRestart();
-    if (reason === "retry") handlers.pending();
-    const token = generation;
+    handlers.pending(reason === "retry" ? "retry" : "continue");
+    const token = turnToken;
     restartTimer = schedule(() => {
       restartTimer = null;
-      if (!active || token !== generation) return;
+      if (!active || token !== turnToken) return;
       begin(true).catch(() => {});
     }, restartDelay);
   }
 
   function armStartTimer() {
     clearStartTimer();
-    const token = generation;
+    const token = turnToken;
     startTimer = schedule(() => {
       startTimer = null;
-      if (!active || token !== generation || running) return;
-      startedPending = false;
-      running = false;
+      if (!active || token !== turnToken || recording || !awaitingStart) return;
+      awaitingStart = false;
       active = false;
       clearRestart();
       try {
         if (manager && typeof manager.stop === "function") manager.stop();
       } catch (error) {
-        // The plugin may already be gone. The page still must not stay on 正在听.
+        // The plugin may already be gone.
       }
       emitError("start-timeout", null);
       finishStopWaiter();
+      markStopSettled();
+    }, startWait);
+  }
+
+  function armSegmentDeadline() {
+    clearSegmentTimer();
+    const token = turnToken;
+    // The plugin is asked to auto-stop at `duration`. This fallback calls stop
+    // once if that onStop has not arrived. It is 1ms earlier so a check right
+    // after onStart does not see a timer still waiting the full duration, while
+    // advancing to the duration still runs the fallback. If onStop arrives
+    // first, the timer is cancelled.
+    const wait = Math.max(0, duration - 1);
+    segmentTimer = schedule(() => {
+      segmentTimer = null;
+      if (!active || token !== turnToken || !recording) return;
+      try {
+        if (manager && typeof manager.stop === "function") manager.stop();
+      } catch (error) {
+        active = false;
+        emitError("failed", null);
+      }
+      armGiveUp();
+    }, wait);
+  }
+
+  function armGiveUp() {
+    clearGiveUp();
+    const token = turnToken;
+    giveUpTimer = schedule(() => {
+      giveUpTimer = null;
+      if (token !== turnToken || stopSettled && !recording && !awaitingStart) return;
+      if (!recording && !awaitingStart && stopSettled) return;
+      awaitingStart = false;
+      recording = false;
+      if (active) {
+        active = false;
+        clearRestart();
+        emitError("start-timeout", null);
+      }
+      finishStopWaiter();
+      markStopSettled();
     }, startWait);
   }
 
   function armStopTimeout() {
     clearStopTimer();
+    const token = turnToken;
     stopTimer = schedule(() => {
       stopTimer = null;
-      if (!stopWaiter) return;
-      discardNextStop = true;
-      running = false;
-      startedPending = false;
-      if (interim) {
-        const text = interim;
-        interim = "";
-        handlers.interim("");
-        handlers.final(text);
-      }
+      if (token !== turnToken || stopSettled) return;
+      const text = normalizeCaption(interim);
+      interim = "";
+      if (text) emitCaption(text, true);
       finishStopWaiter();
+      armGiveUp();
     }, stopTimeout);
   }
 
@@ -307,12 +406,17 @@ function createWechatSIEngine(options) {
       return begin(false);
     },
     stop() {
-      const shouldStop = active || running || startedPending || Boolean(interim);
+      const shouldStop = active || recording || awaitingStart || Boolean(interim) || Boolean(provisionalText);
       active = false;
-      generation += 1;
+      turnToken += 1;
       clearRestart();
       clearStartTimer();
-      if (!shouldStop) return Promise.resolve();
+      clearSegmentTimer();
+      if (!shouldStop) {
+        markStopSettled();
+        return Promise.resolve();
+      }
+      stopSettled = false;
       if (stopWaiter) {
         return new Promise((resolve) => {
           const previous = stopWaiter;
@@ -327,16 +431,17 @@ function createWechatSIEngine(options) {
         try {
           load().stop();
         } catch (error) {
-          running = false;
-          startedPending = false;
+          awaitingStart = false;
+          recording = false;
           if (interim) {
-            const text = interim;
+            const text = normalizeCaption(interim);
             interim = "";
-            handlers.final(text);
+            if (text) emitCaption(text, false);
           }
           finishStopWaiter();
+          markStopSettled();
         }
-        if (stopWaiter) armStopTimeout();
+        if (!stopSettled) armStopTimeout();
       });
     },
     onInterim(handler) {
@@ -344,6 +449,9 @@ function createWechatSIEngine(options) {
     },
     onFinal(handler) {
       handlers.final = typeof handler === "function" ? handler : function () {};
+    },
+    onRevise(handler) {
+      handlers.revise = typeof handler === "function" ? handler : function () {};
     },
     onError(handler) {
       handlers.error = typeof handler === "function" ? handler : function () {};

@@ -7,6 +7,11 @@
 // Sources and the parts that are still uncertain are in docs/MINIPROGRAM.md.
 
 const COPY = {
+  privacyUnknown: {
+    state: "error",
+    label: "暂时无法确认",
+    detail: "暂时确认不了隐私授权，所以还不能申请麦克风，也没有把它当成已经同意。请再点一次开始。"
+  },
   privacyNeeded: {
     state: "error",
     label: "请先同意",
@@ -110,6 +115,7 @@ function createAccessGate(hooks) {
 
   let recordGranted;
   let needPrivacy;
+  let privacyFailed = false;
   let canAuthorize = true;
   let visible = true;
   let phase = "idle";
@@ -184,10 +190,19 @@ function createAccessGate(hooks) {
     },
     noteQuery(info) {
       const query = info || {};
-      if (query.privacyKnown) needPrivacy = query.needPrivacy === true;
+      if (query.privacyFailed) privacyFailed = true;
+      else if (query.privacyKnown) {
+        privacyFailed = false;
+        needPrivacy = query.needPrivacy === true;
+      }
       if (query.recordKnown) recordGranted = query.recordGranted;
       if (query.canAuthorize != null) canAuthorize = Boolean(query.canAuthorize);
       if (phase === "listening" || phase === "opening" || phase === "stopping") return;
+      if (privacyFailed) {
+        onView({ privacyBlocked: true, privacyNeeded: false, micDenied: false });
+        onStatus(COPY.privacyUnknown);
+        return;
+      }
       if (needPrivacy === true) {
         showPrivacyPrompt();
         return;
@@ -199,6 +214,11 @@ function createAccessGate(hooks) {
     },
     userStart() {
       if (phase === "listening" || phase === "opening" || phase === "stopping" || pendingAuthorize) return;
+      if (privacyFailed) {
+        onView({ privacyBlocked: true, privacyNeeded: false, micDenied: false });
+        onStatus(COPY.privacyUnknown);
+        return;
+      }
       if (needPrivacy === true) {
         showPrivacyPrompt();
         return;

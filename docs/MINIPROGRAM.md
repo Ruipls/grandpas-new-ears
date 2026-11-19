@@ -56,7 +56,7 @@ npm run check
 - 语音识别用 `requirePlugin("WechatSI").getRecordRecognitionManager()`。
 - `start` 只接受 `duration` 和 `lang`。语言有 `zh_CN`、`en_US`、`zh_HK`、`sichuanhua`。
 - `onStop` 里的 `result` 是这一段的正式结果。
-- 英文文档和较早的中文文档还有 `onRecognize`，回调里的 `result` 是这一段正在说的临时文字。2026-08-24 的中文方法表没有列出 `onRecognize`。这版仍然监听它。如果真机只有停顿后的整句、没有「正在说」，就是这个回调没有来，正式字幕仍走 `onStop`。
+- 2026-08-24 的中文和英文插件正文都只有 `start`、`stop`、`onStart`、`onStop`、`onError`，没有 `onRecognize`。`onStop.result` 才是正式字幕。这版如果收到 `onRecognize`，只用它显示「正在说」；没有这个回调时，正式字幕仍然完整。不要把旧文档里的 `onRecognize` 当成现在的必需接口。
 - 语音输入配额，按中文文档是每个小程序每分钟 250 条、每天 3 万条。要提高配额，邮件 `wetranslate@tencent.com`，模板在同一页。
 
 添加步骤：
@@ -67,7 +67,7 @@ npm run check
 4. 把后台给出的版本号，填进 `miniprogram/app.json` 里 `plugins.WechatSI.version`。
 5. 工程里现在写的是 `0.3.6`，因为 2025 年的社区示例在用它。官方示例代码仍是 `0.0.7`。这两个数字不要当成最新版本。以后台插件管理里能选到的版本为准，不一致就改 `app.json` 那一处。
 
-待核实：英文文档页写着 “This plug-in is out of maintenance”，中文文档在 2026-08-24 仍在说明用法和配额。现在还能不能把这个插件加进一个新的小程序，要在插件管理里搜索后才能确定。若已经不能添加，就按第 8 节换云端识别，字幕页面不用改。
+待核实：2026-08-24 的中文和英文插件文档都还在说明用法、配额和错误码。英文页没有 “out of maintenance”。官方示例版本仍是 `0.0.7`，这不表示 `0.3.6` 不能用。现在还能不能把这个插件加进一个新的小程序，以及后台实际提供哪个版本，要在插件管理里看。若已经不能添加，就按第 8 节换云端识别，字幕页面不用改。
 
 ## 4. 用户隐私保护指引和麦克风
 
@@ -156,9 +156,7 @@ npm run check
 ## 7. 这版的限制
 
 - 识别要联网。没有离线识别。
-- 同声传译单次录音官方最长 60 秒。社区里有人把时长设成 60 秒或 45 秒，大约 40 秒就停住，并且没有 `onStop`。所以这版每 30 秒主动收一段，再立刻开始下一段。一句话可能在 30 秒边界被切开。若你的手机长到 60 秒仍稳定，可以再把 `miniprogram/engines/wechat-si.js` 里的 `DEFAULT_DURATION_MS` 调大，最大不要超过 60000。
-- 错误码按 2026-08-24 的中文插件文档分类。`-30004/-30008/-30010` 是网络，`-30006` 是识别超时，`-30003` 是录音数据没传完，`-30011` 表示已经在听所以不再开始一次。文档没有要求自动重试；这版对网络、超时、传输出错各自动再试一次，第二次才提示。插件 `onStart` 一直不来时，8 秒后显示「没有开始听」。这 8 秒不是官方超时。
-- 临时字幕依赖 `onRecognize`。2026-08-24 的中文方法表没有这一项。见第 3 节。没有它时，正式字幕仍来自 `onStop`。
+- 同声传译 `start` 的 `duration` 设为 30000。官方说明：传入合法 duration 后，到时插件会自己停，并回调 `onStop`，`result` 才是这一段的正式字幕。若到了 30 秒还没有 `onStop`，客户端会再调用一次 `stop`，只为要回这一段的结果，不会在未知状态下连续开新的录音。`onRecognize` 不在 2026-08-24 的中英文方法表里，没有它也能靠 `onStop` 出字幕；有它时只用来显示「正在说」。
 - `start` 不能选择 Android 的 `audioSource`。插件用系统默认输入：一般是手机麦克风；系统把耳麦或 Type-C 麦当成耳机麦时，会自动改用那一个。这和微信录音接口里的 `auto` 一致。有的 USB 麦不会被当成耳机麦，手机就会继续用内置麦克风。请用你的领夹麦在真机上确认，不要只看模拟器。
 - 这版不会同时自己调用 `wx.getRecorderManager()`。那个录音器是全局唯一的，和插件抢会冲突。
 - 锁屏、切走、打开「已保存的对话」都会停止收音，并留下文字提示。回到前台不会自动接着听，避免手机在口袋里继续录。
@@ -171,7 +169,7 @@ npm run check
 ## 8. 建议的下一步
 
 1. 用真机把第 5 节走一遍，尤其是领夹麦、锁屏、拒绝麦克风、连续说一分钟。
-2. 若插件不能新添加，或 30 秒分段太碎，就换成云端流式识别（讯飞、阿里云或腾讯云）。字幕页面只认 `miniprogram/engines/index.js` 里的 `createSpeechEngine()`：`start`、`stop`、`onInterim`、`onFinal`、`onError`、`onStarted`、`onPending`。`onStarted` 要在录音真正开始之后调用，页面才显示「正在听」。`onPending` 表示正在重试，页面不能继续显示「正在听」。换实现时改 `createSpeechEngine()` 即可。
+2. 若插件不能新添加，或 30 秒分段太碎，就换成云端流式识别（讯飞、阿里云或腾讯云）。字幕页面只认 `createSpeechEngine()`：`start`、`stop`、`onInterim`、`onFinal`、`onRevise`、`onError`、`onStarted`、`onPending`。`onStarted` 之后才显示「正在听」。`onPending` 表示这一段已经结束或正在重试，不能继续显示「正在听」。`onRevise` 用迟到的 `onStop.result` 替换刚才临时收住的半句。换实现时改 `createSpeechEngine()` 即可。没有 `onInterim` 也必须能靠 `onFinal` 工作。
 3. 云端那一版需要一个很小的后端来发临时 token，不要把密钥放进小程序。录音可以自己用 `wx.getRecorderManager()`。Android 上优先试 `audioSource: "voice_recognition"`；基础库较新时也可以试 `audioMode: "voiceRecognition"`（和 `audioSource` 同时写时，微信文档说 `audioMode` 生效）。这一步仍不要和同声传译插件一起占用录音器。
 4. 需要翻译时，同声传译还有 `plugin.translate`（普通话、英语、粤语），也可以以后交给云端翻译。
 5. 找几位老人或家人看字号、按钮和「结束时问要不要保存」是否够清楚。
@@ -201,6 +199,6 @@ npm run check
 npm run pack:miniprogram
 ```
 
-`npm run check` 同时跑上面两个检查脚本。通过只说明 Node 模拟和文件检查没失败。它不是微信开发者工具，也不是手机。逐条 ID、mock 边界和平台清单见 [验收矩阵](ACCEPTANCE.md)。
+`npm run check` 同时跑结构模拟、契约模拟和独立时序探针。通过只说明 Node 模拟和文件检查没失败。它不是微信开发者工具，也不是手机。逐条 ID、mock 边界和平台清单见 [验收矩阵](ACCEPTANCE.md)。
 
 现在不需要去公众平台改配置，也不需要提交审核。AppID 继续留在开发者工具里手选。配置本身也不能当成一定能上线。
