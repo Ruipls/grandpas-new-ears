@@ -11,6 +11,9 @@ const { createWechatSIEngine } = require("./wechat-si");
  * onInterim(handler)  handler(text)
  * onFinal(handler)    handler(text)
  * onError(handler)    handler({ code, retcode, message })
+ * onStarted(handler)  handler()
+ *   Fires only after the provider reports that recording has started.
+ *   start() resolving is not the same thing.
  *
  * error.code:
  *   "network" | "mic" | "interrupted" | "unavailable" | "limited" | "failed"

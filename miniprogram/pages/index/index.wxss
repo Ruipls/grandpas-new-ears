@@ -56,7 +56,8 @@
   color: #135246;
 }
 
-.state-paused {
+.state-paused,
+.state-pending {
   color: #9a3412;
 }
 
@@ -292,7 +293,8 @@ button[disabled] {
 }
 
 .contrast-high .state-listening,
-.contrast-high .state-paused {
+.contrast-high .state-paused,
+.contrast-high .state-pending {
   background: #111111;
   color: #ffe14a;
 }

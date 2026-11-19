@@ -53,7 +53,8 @@ function createWechatSIEngine(options) {
   const handlers = {
     interim() {},
     final() {},
-    error() {}
+    error() {},
+    started() {}
   };
 
   let manager = null;
@@ -110,6 +111,7 @@ function createWechatSIEngine(options) {
       discardNextStop = false;
       startedPending = false;
       running = true;
+      if (active) handlers.started();
     };
     manager.onRecognize = function (res) {
       if (!running && !active) return;
@@ -296,6 +298,9 @@ function createWechatSIEngine(options) {
     },
     onError(handler) {
       handlers.error = typeof handler === "function" ? handler : function () {};
+    },
+    onStarted(handler) {
+      handlers.started = typeof handler === "function" ? handler : function () {};
     }
   };
 }
